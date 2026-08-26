@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Cave Handbook</title>
+<link rel="stylesheet" href="assets/css/styles.css">
+<style>
+  .dash-greeting { margin-bottom: 28px; }
+  .dash-greeting h1 { font: 700 27px/1.15 Barlow, sans-serif; letter-spacing: -.01em; margin-bottom: 3px; }
+
+  .dept-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .dept-tile {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    transition: border-color .12s, transform .08s;
+  }
+  .dept-tile:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+  .dept-tile .count { font: 700 30px/1 "Barlow Condensed", sans-serif; color: var(--navy); }
+  .dept-tile .name { font: 600 13px Barlow, sans-serif; color: var(--text-secondary); margin-top: 4px; }
+  .dept-tile .bar { height: 4px; border-radius: 2px; background: var(--border); margin-top: 12px; overflow: hidden; display: flex; }
+  .dept-tile .bar span { height: 100%; }
+
+  .dash-columns {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 900px) { .dash-columns { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; }
+  .panel h2 { font: 700 15px "Barlow Condensed", sans-serif; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 14px; }
+
+  .queue-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+  }
+  .queue-item:first-of-type { border-top: none; }
+  .queue-item .title { font: 600 14px Barlow, sans-serif; }
+  .queue-item .sub { font-size: 12px; color: var(--text-muted); }
+  .queue-item .go { margin-left: auto; }
+
+  .health-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .health-row:first-of-type { border-top: none; }
+  .health-row .dept-name { flex: 0 0 150px; font: 600 13px Barlow, sans-serif; }
+  .health-track { flex: 1; height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; display: flex; }
+  .health-track span { height: 100%; }
+  .health-count { flex: 0 0 auto; font: 600 12px Barlow, sans-serif; color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar">
+    <a href="index.html" class="brand"><span class="brand-mark">🎱</span> Cave <strong>&nbsp;Handbook</strong></a>
+    <nav class="topnav">
+      <a href="index.html" class="active">Home</a>
+      <a href="library.html">Library</a>
+      <a href="library.html">My Queue</a>
+      <a href="#">Changelog</a>
+      <a href="#">People</a>
+    </nav>
+    <div class="topbar-right">
+      <div class="search-box">
+        <span>&#128269;</span>
+        <input type="text" placeholder="Search SOPs...">
+      </div>
+      <div class="avatar">DK</div>
+    </div>
+  </header>
+
+  <div class="page-body">
+    <div class="dash-greeting">
+      <h1 id="greeting">Good morning, Dean.</h1>
+      <p class="muted">Here's what's happening across the Handbook today.</p>
+    </div>
+
+    <div class="dept-tiles" id="dept-tiles"></div>
+
+    <div class="dash-columns">
+      <div class="panel">
+        <h2>Waiting on you</h2>
+        <div id="waiting-list"></div>
+      </div>
+      <div class="panel">
+        <h2>Team health</h2>
+        <div id="health-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/data.js"></script>
+<script>
+  function greet() {
+    const h = new Date().getHours();
+    const word = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+    document.getElementById("greeting").textContent = `${word}, ${CURRENT_USER.name}.`;
+  }
+  greet();
+
+  const STATUS_COLOR = {
+    current: "var(--green)",
+    "review-due": "var(--amber)",
+    overdue: "var(--red)",
+    draft: "var(--draft)",
+  };
+
+  function renderDeptTiles() {
+    const el = document.getElementById("dept-tiles");
+    el.innerHTML = DEPARTMENTS.map((d) => {
+      const sops = sopsByDepartment(d.id);
+      const total = sops.length;
+      const segments = STATUSES.map((s) => {
+        const n = sops.filter((x) => x.status === s.id).length;
+        if (!n) return "";
+        const pct = (n / total) * 100;
+        return `<span style="width:${pct}%;background:${STATUS_COLOR[s.id]}"></span>`;
+      }).join("");
+      return `
+        <a class="dept-tile" href="library.html?dept=${d.id}">
+          <div class="count">${total}</div>
+          <div class="name">${d.name}</div>
+          <div class="bar">${segments}</div>
+        </a>`;
+    }).join("");
+  }
+
+  function renderWaitingOnYou() {
+    const mine = SOPS.filter(
+      (s) => s.owner.name === CURRENT_USER.name && (s.status === "overdue" || s.status === "review-due")
+    );
+    const el = document.getElementById("waiting-list");
+    if (!mine.length) {
+      el.innerHTML = `<p class="muted small">Nothing waiting on you right now.</p>`;
+      return;
+    }
+    el.innerHTML = mine
+      .map((s) => {
+        const label = s.status === "overdue" ? "Sign off" : "Review due";
+        return `
+        <div class="queue-item">
+          <span class="badge badge-${s.status}">${statusMeta(s.status).label}</span>
+          <div>
+            <div class="title">${label}: ${s.title}</div>
+            <div class="sub">${getDepartment(s.department).name}</div>
+          </div>
+          <a class="btn btn-secondary go" href="sop.html?id=${s.id}">Open</a>
+        </div>`;
+      })
+      .join("");
+  }
+
+  function renderTeamHealth() {
+    const el = document.getElementById("health-list");
+    el.innerHTML = DEPARTMENTS.map((d) => {
+      const sops = sopsByDepartment(d.id);
+      const total = sops.length || 1;
+      const segments = STATUSES.map((s) => {
+        const n = sops.filter((x) => x.status === s.id).length;
+        if (!n) return "";
+        const pct = (n / total) * 100;
+        return `<span style="width:${pct}%;background:${STATUS_COLOR[s.id]}"></span>`;
+      }).join("");
+      const overdue = sops.filter((s) => s.status === "overdue").length;
+      return `
+        <div class="health-row">
+          <div class="dept-name">${d.name}</div>
+          <div class="health-track">${segments}</div>
+          <div class="health-count">${overdue ? overdue + " overdue" : "on track"}</div>
+        </div>`;
+    }).join("");
+  }
+
+  renderDeptTiles();
+  renderWaitingOnYou();
+  renderTeamHealth();
+</script>
+</body>
+</html>

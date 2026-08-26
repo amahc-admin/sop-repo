@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run — The Cave Handbook</title>
+<link rel="stylesheet" href="assets/css/styles.css">
+<style>
+  body { display: flex; justify-content: center; }
+  .run-shell {
+    width: 100%;
+    max-width: 460px;
+    min-height: 100vh;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 0 1px var(--border);
+  }
+
+  .run-top { padding: 16px 20px 12px; }
+  .run-top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .run-top-row .exit { font: 600 13px Barlow, sans-serif; color: var(--text-muted); }
+  .run-top-row .exit:hover { color: var(--navy); }
+  .run-top-row .pause-btn { font: 600 13px Barlow, sans-serif; color: var(--text-muted); background: none; border: none; cursor: pointer; }
+  .run-top-row .pause-btn:hover { color: var(--navy); }
+  .progress-track { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--yellow); transition: width .2s ease; }
+  .step-counter { display: flex; justify-content: space-between; margin-top: 8px; }
+
+  .run-body { flex: 1; padding: 4px 20px 20px; display: flex; flex-direction: column; }
+  .sop-name { font: 700 11px "Barlow Condensed", sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); margin-bottom: 6px; }
+
+  .step-card { flex: 1; }
+  .step-card h2 { font: 600 27px/1.2 Barlow, sans-serif; letter-spacing: -.01em; text-wrap: balance; margin-bottom: 14px; }
+  .step-card .body-text { font-size: 15px; color: var(--text-secondary); line-height: 1.55; margin-bottom: 20px; }
+
+  .check-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 14px; border-radius: var(--radius-md);
+    background: var(--card-bg); border: 1px solid var(--border);
+    margin-bottom: 10px; cursor: pointer; font: 600 14.5px Barlow, sans-serif;
+    transition: background .12s, border-color .12s;
+  }
+  .check-item.checked { background: var(--green-bg); border-color: #b9e3c4; }
+  .check-item .box {
+    width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--border-strong);
+    flex-shrink: 0; display: grid; place-items: center; background: #fff; font-size: 12px; color: transparent;
+  }
+  .check-item.checked .box { background: var(--green); border-color: var(--green); color: #fff; }
+
+  .option-item {
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 14px; border-radius: var(--radius-md);
+    background: var(--card-bg); border: 2px solid var(--border);
+    margin-bottom: 10px; cursor: pointer;
+  }
+  .option-item .label { font: 700 15px Barlow, sans-serif; }
+  .option-item .detail { font-size: 12.5px; color: var(--text-muted); }
+  .option-item.selected { border-color: var(--navy); background: #fff; }
+
+  .flag-link { align-self: flex-start; font: 600 13px Barlow, sans-serif; color: var(--text-faint); background: none; border: none; cursor: pointer; margin-top: auto; padding-top: 16px; }
+  .flag-link:hover { color: var(--navy); }
+  .flag-link.flagged { color: var(--amber-dark); }
+
+  .run-footer { padding: 16px 20px 24px; display: flex; gap: 10px; border-top: 1px solid var(--border); }
+  .run-footer .btn { flex: 1; }
+  .run-footer .btn-secondary { flex: 0 0 auto; padding-left: 18px; padding-right: 18px; }
+
+  .pause-overlay {
+    position: fixed; inset: 0; background: rgba(22,33,58,.85);
+    display: none; align-items: center; justify-content: center; flex-direction: column; gap: 16px; z-index: 20;
+    color: #fff; text-align: center; padding: 20px;
+  }
+  .pause-overlay.show { display: flex; }
+  .pause-overlay h3 { font: 600 22px Barlow, sans-serif; }
+
+  .complete-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px 0; }
+  .complete-icon { width: 64px; height: 64px; border-radius: 50%; background: var(--green-bg); color: var(--green); display: grid; place-items: center; font-size: 30px; margin-bottom: 18px; }
+  .complete-screen h2 { font: 600 30px/1.15 Barlow, sans-serif; letter-spacing: -.015em; margin-bottom: 6px; }
+  .complete-screen .sub { color: var(--text-muted); margin-bottom: 24px; }
+  .recap-card { width: 100%; text-align: left; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px; }
+  .recap-card h3 { font: 700 11px "Barlow Condensed", sans-serif; text-transform: uppercase; letter-spacing: .05em; color: var(--text-faint); margin-bottom: 10px; }
+  .recap-row { display: flex; justify-content: space-between; font-size: 13.5px; padding: 5px 0; }
+  .flag-note { width: 100%; font-size: 13px; background: var(--amber-bg); color: var(--amber-dark); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; text-align: left; }
+</style>
+</head>
+<body>
+<div class="run-shell" id="run-shell">
+  <p class="muted" id="not-found" style="display:none;padding:40px 20px">SOP not found. <a href="library.html" style="text-decoration:underline">Back to the library</a>.</p>
+
+  <div id="run-app" style="display:none;flex:1;display:flex;flex-direction:column">
+    <div class="run-top">
+      <div class="run-top-row">
+        <a class="exit" id="exit-link" href="#">&larr; Exit run</a>
+        <button class="pause-btn" id="pause-btn">Pause</button>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+      <div class="step-counter">
+        <span class="small muted" id="step-label">Step 1 of 1</span>
+        <span class="small muted" id="step-tag"></span>
+      </div>
+    </div>
+
+    <div class="run-body" id="run-body"></div>
+  </div>
+
+  <div class="pause-overlay" id="pause-overlay">
+    <h3>Paused</h3>
+    <p class="muted" style="color:rgba(255,255,255,.7)">Take your time. Nothing is lost if you close the tab.</p>
+    <button class="btn btn-primary" id="resume-btn">Resume</button>
+  </div>
+</div>
+
+<script src="assets/js/data.js"></script>
+<script>
+  const id = new URLSearchParams(location.search).get("id");
+  const sop = getSop(id);
+
+  if (!sop) {
+    document.getElementById("not-found").style.display = "block";
+  } else {
+    document.getElementById("run-app").style.display = "flex";
+    document.title = "Run: " + sop.title;
+    document.getElementById("exit-link").href = `sop.html?id=${sop.id}`;
+
+    const totalSteps = sop.steps.length + 1; // + sign-off screen
+    let stepIndex = 0;
+    const checklistState = sop.steps.map((s) => (s.items ? s.items.map(() => false) : []));
+    const decisionChoice = {};
+    const flagged = new Set();
+
+    function isStepComplete(i) {
+      const step = sop.steps[i];
+      if (!step) return true;
+      if (step.type === "checklist" && step.items) {
+        return checklistState[i].every(Boolean);
+      }
+      if (step.type === "decision") {
+        return decisionChoice[i] !== undefined;
+      }
+      return true;
+    }
+
+    function renderProgress() {
+      const pct = Math.min(100, Math.round((stepIndex / (totalSteps - 1)) * 100));
+      document.getElementById("progress-fill").style.width = pct + "%";
+      const shown = Math.min(stepIndex + 1, totalSteps);
+      document.getElementById("step-label").textContent =
+        stepIndex >= sop.steps.length ? "Sign off" : `Step ${shown} of ${sop.steps.length}`;
+      document.getElementById("step-tag").textContent = flagged.has(stepIndex) ? "Flagged" : "";
+    }
+
+    function renderStep() {
+      const body = document.getElementById("run-body");
+      if (stepIndex >= sop.steps.length) {
+        renderComplete(body);
+        renderFooterComplete();
+        renderProgress();
+        return;
+      }
+
+      const step = sop.steps[stepIndex];
+      let inner = `<div class="sop-name">${sop.title}</div><div class="step-card"><h2>${step.title}</h2>`;
+      if (step.body) inner += `<p class="body-text">${step.body}</p>`;
+
+      if (step.type === "checklist" && step.items) {
+        inner += step.items
+          .map(
+            (it, idx) => `
+          <div class="check-item ${checklistState[stepIndex][idx] ? "checked" : ""}" data-idx="${idx}">
+            <span class="box">&#10003;</span><span>${it}</span>
+          </div>`
+          )
+          .join("");
+      }
+
+      if (step.type === "decision" && step.options) {
+        inner += step.options
+          .map(
+            (o, idx) => `
+          <div class="option-item ${decisionChoice[stepIndex] === idx ? "selected" : ""}" data-idx="${idx}">
+            <span class="label">${o.label}</span><span class="detail">${o.detail}</span>
+          </div>`
+          )
+          .join("");
+      }
+
+      inner += `</div><button class="flag-link ${flagged.has(stepIndex) ? "flagged" : ""}" id="flag-btn">${
+        flagged.has(stepIndex) ? "⚑ Flagged as unclear" : "Flag this step as unclear"
+      }</button>`;
+
+      body.innerHTML = inner;
+
+      body.querySelectorAll(".check-item").forEach((el) => {
+        el.addEventListener("click", () => {
+          const idx = Number(el.dataset.idx);
+          checklistState[stepIndex][idx] = !checklistState[stepIndex][idx];
+          renderStep();
+          renderFooter();
+        });
+      });
+      body.querySelectorAll(".option-item").forEach((el) => {
+        el.addEventListener("click", () => {
+          decisionChoice[stepIndex] = Number(el.dataset.idx);
+          renderStep();
+          renderFooter();
+        });
+      });
+      document.getElementById("flag-btn").addEventListener("click", () => {
+        flagged.has(stepIndex) ? flagged.delete(stepIndex) : flagged.add(stepIndex);
+        renderStep();
+        renderProgress();
+      });
+
+      renderFooter();
+      renderProgress();
+    }
+
+    function renderComplete(body) {
+      let recapRows = "";
+      sop.steps.forEach((s, i) => {
+        if (s.type === "decision" && decisionChoice[i] !== undefined) {
+          recapRows += `<div class="recap-row"><span class="muted">${s.title}</span><span style="font-weight:600">${s.options[decisionChoice[i]].label}</span></div>`;
+        }
+      });
+
+      body.innerHTML = `
+        <div class="complete-screen">
+          <div class="complete-icon">&#10003;</div>
+          <h2>${sop.title.split(" — ")[0]}. Done.</h2>
+          <p class="sub">Nice work, ${CURRENT_USER.name}.</p>
+          ${recapRows ? `<div class="recap-card"><h3>This run</h3>${recapRows}</div>` : ""}
+          ${
+            flagged.size
+              ? `<div class="flag-note">You flagged step${flagged.size > 1 ? "s" : ""} ${[...flagged]
+                  .map((i) => i + 1)
+                  .join(", ")} as unclear. ${sop.owner.name} will see it in the review queue.</div>`
+              : ""
+          }
+        </div>`;
+    }
+
+    function renderFooter() {
+      let footer = document.getElementById("run-footer");
+      if (!footer) {
+        footer = document.createElement("div");
+        footer.className = "run-footer";
+        footer.id = "run-footer";
+        document.getElementById("run-shell").insertBefore(footer, document.getElementById("pause-overlay"));
+      }
+      const complete = isStepComplete(stepIndex);
+      const isLast = stepIndex === sop.steps.length - 1;
+      footer.innerHTML = `
+        <button class="btn btn-secondary" id="back-btn" ${stepIndex === 0 ? "disabled" : ""}>Back</button>
+        <button class="btn btn-primary" id="next-btn" ${complete ? "" : "disabled"}>${isLast ? "Finish & sign off" : "Next step"}</button>
+      `;
+      document.getElementById("back-btn").addEventListener("click", () => {
+        if (stepIndex > 0) { stepIndex--; renderStep(); }
+      });
+      document.getElementById("next-btn").addEventListener("click", () => {
+        if (!isStepComplete(stepIndex)) return;
+        stepIndex++;
+        renderStep();
+      });
+    }
+
+    function renderFooterComplete() {
+      const footer = document.getElementById("run-footer");
+      footer.innerHTML = `<a class="btn btn-primary" href="sop.html?id=${sop.id}" style="text-align:center">Back to the SOP</a>`;
+    }
+
+    document.getElementById("pause-btn").addEventListener("click", () => {
+      document.getElementById("pause-overlay").classList.add("show");
+    });
+    document.getElementById("resume-btn").addEventListener("click", () => {
+      document.getElementById("pause-overlay").classList.remove("show");
+    });
+
+    renderStep();
+  }
+</script>
+</body>
+</html>

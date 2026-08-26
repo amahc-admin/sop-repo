@@ -1,0 +1,246 @@
+/* ==========================================================================
+   The Cave Handbook — design tokens & shared components
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap');
+
+:root {
+  --navy: #16213a;
+  --yellow: #ffe500;
+  --canvas: #e8e6e1;
+  --surface: #ffffff;
+  --bg-soft: #f6f5f2;
+  --bg-soft-2: #eceae5;
+  --card-bg: #f1f0ed;
+  --border: #e5e3de;
+  --border-strong: #d1d0cc;
+
+  --text-primary: #16213a;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+  --text-faint: #9ca3af;
+
+  --red: #e5231b;
+  --red-bg: #fdeceb;
+  --red-dark: #7f1d1d;
+
+  --green: #16a34a;
+  --green-bg: #eaf6ed;
+  --green-dark: #15803d;
+
+  --amber: #f59e0b;
+  --amber-bg: #fdf4e3;
+  --amber-dark: #b45309;
+
+  --draft: #6b7280;
+  --draft-bg: #eceae5;
+  --draft-dark: #374151;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 24px;
+  --shadow-card: 0 1px 2px rgba(22, 33, 58, 0.06), 0 1px 1px rgba(22, 33, 58, 0.04);
+  --shadow-pop: 0 12px 32px rgba(22, 33, 58, 0.16);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--canvas);
+  color: var(--text-primary);
+  font: 400 15px/1.5 Barlow, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+
+h1, h2, h3, h4 { margin: 0; font-family: Barlow, system-ui, sans-serif; }
+
+.eyebrow {
+  font: 700 12px/1 "Barlow Condensed", sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* ---- App shell ---- */
+.app-shell {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 20px 20px 64px;
+}
+
+/* ---- Top bar ---- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: var(--navy);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 14px 24px;
+  position: relative;
+}
+.topbar::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -12px;
+  height: 12px;
+  background: var(--yellow);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 700 20px/1 "Barlow Condensed", sans-serif;
+  letter-spacing: .02em;
+  color: #fff;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--yellow);
+  color: var(--navy);
+  font-size: 18px;
+}
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+.topnav a {
+  color: rgba(255,255,255,.72);
+  font: 600 14px/1 Barlow, sans-serif;
+  padding: 9px 14px;
+  border-radius: 8px;
+  transition: background .12s, color .12s;
+}
+.topnav a:hover { background: rgba(255,255,255,.08); color: #fff; }
+.topnav a.active { background: var(--yellow); color: var(--navy); }
+
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px;
+  padding: 8px 14px;
+  min-width: 200px;
+}
+.search-box input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font: 500 13px Barlow, sans-serif;
+  width: 100%;
+}
+.search-box input::placeholder { color: rgba(255,255,255,.5); }
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--yellow);
+  color: var(--navy);
+  font: 700 13px "Barlow Condensed", sans-serif;
+}
+
+.page-body {
+  background: var(--surface);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 36px;
+  margin-top: 12px;
+}
+
+/* ---- Status badges ---- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font: 700 11px/1 "Barlow Condensed", sans-serif;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.badge::before {
+  content: "";
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.badge-current { background: var(--green-bg); color: var(--green-dark); }
+.badge-review-due { background: var(--amber-bg); color: var(--amber-dark); }
+.badge-overdue { background: var(--red-bg); color: var(--red-dark); }
+.badge-draft { background: var(--draft-bg); color: var(--draft-dark); }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 20px;
+  font: 700 14px Barlow, sans-serif;
+  cursor: pointer;
+  transition: transform .08s, box-shadow .12s, background .12s;
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--yellow); color: var(--navy); }
+.btn-primary:hover { box-shadow: 0 4px 14px rgba(255,229,0,.4); }
+.btn-secondary { background: var(--card-bg); color: var(--navy); border: 1px solid var(--border-strong); }
+.btn-secondary:hover { background: var(--bg-soft-2); }
+.btn-ghost { background: transparent; color: var(--text-muted); }
+.btn-ghost:hover { color: var(--navy); }
+.btn-danger-outline { background: transparent; color: var(--red); border: 1px solid var(--red); }
+
+/* ---- Cards ---- */
+.card {
+  background: var(--card-bg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  padding: 20px;
+}
+
+/* ---- Avatars (small) ---- */
+.pill-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--navy);
+  color: #fff;
+  font: 700 11px "Barlow Condensed", sans-serif;
+  flex-shrink: 0;
+}
+
+/* ---- Utility ---- */
+.muted { color: var(--text-muted); }
+.faint { color: var(--text-faint); }
+.small { font-size: 13px; }
+.stack { display: flex; flex-direction: column; }
+.row { display: flex; align-items: center; }
+.spread { display: flex; align-items: center; justify-content: space-between; }
+.hr { height: 1px; background: var(--border); border: none; margin: 20px 0; }
+
+@media (max-width: 860px) {
+  .topnav { display: none; }
+  .search-box { display: none; }
+  .app-shell { padding: 12px; }
+  .page-body { padding: 20px; }
+}

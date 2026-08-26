@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOP — The Cave Handbook</title>
+<link rel="stylesheet" href="assets/css/styles.css">
+<style>
+  .breadcrumb { font: 600 12.5px Barlow, sans-serif; color: var(--text-muted); margin-bottom: 14px; }
+  .breadcrumb a:hover { color: var(--navy); }
+  .breadcrumb .sep { margin: 0 6px; color: var(--text-faint); }
+
+  .sop-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 24px; flex-wrap: wrap; }
+  .sop-header h1 { font: 600 38px/1.12 Barlow, sans-serif; letter-spacing: -.02em; max-width: 30ch; }
+  .sop-header .subtitle { color: var(--text-muted); margin-top: 8px; font-size: 15px; }
+  .sop-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+  .sop-layout { display: grid; grid-template-columns: 1fr 300px; gap: 36px; }
+  @media (max-width: 900px) { .sop-layout { grid-template-columns: 1fr; } }
+
+  .never-banner {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: var(--red-bg); color: var(--red-dark);
+    border: 1px solid #f3c9c6; border-radius: var(--radius-md);
+    padding: 14px 16px; margin-bottom: 24px; font: 600 14px/1.4 Barlow, sans-serif;
+  }
+  .never-banner .tag { font: 700 11px "Barlow Condensed", sans-serif; text-transform: uppercase; letter-spacing: .05em; flex-shrink: 0; }
+
+  .section { margin-bottom: 32px; scroll-margin-top: 20px; }
+  .section h2 { font: 600 19px Barlow, sans-serif; margin-bottom: 14px; }
+
+  .before-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .before-list li { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-secondary); }
+  .before-list li::before { content: "\2713"; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--card-bg); border: 1px solid var(--border-strong); font-size: 11px; color: var(--text-faint); flex-shrink: 0; }
+
+  .step-row { display: flex; gap: 14px; padding: 16px 0; border-top: 1px solid var(--border); }
+  .step-row:first-of-type { border-top: none; }
+  .step-num { flex: 0 0 30px; height: 30px; border-radius: 50%; background: var(--card-bg); display: grid; place-items: center; font: 700 13px "Barlow Condensed", sans-serif; color: var(--navy); }
+  .step-row h3 { font: 600 15.5px Barlow, sans-serif; margin-bottom: 4px; }
+  .step-row p { font-size: 13.5px; color: var(--text-muted); margin: 0; }
+  .step-row .step-type { font: 700 10.5px "Barlow Condensed", sans-serif; text-transform: uppercase; letter-spacing: .05em; color: var(--text-faint); margin-left: 8px; }
+
+  .forms-list, .related-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .forms-list a, .related-list a { display: flex; align-items: center; gap: 8px; font: 600 13.5px Barlow, sans-serif; padding: 8px 10px; border-radius: 8px; background: var(--card-bg); }
+  .forms-list a:hover, .related-list a:hover { background: var(--bg-soft-2); }
+
+  .rail-card { background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px; margin-bottom: 16px; }
+  .rail-card h3 { font: 700 11px "Barlow Condensed", sans-serif; text-transform: uppercase; letter-spacing: .05em; color: var(--text-faint); margin-bottom: 12px; }
+  .meta-line { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 13.5px; }
+  .meta-line .k { color: var(--text-muted); }
+  .meta-line .v { font-weight: 600; }
+  .signoff-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; }
+  .signoff-row .name { font-weight: 600; }
+  .signoff-row .date { color: var(--text-faint); margin-left: auto; }
+  .signoff-note { font-size: 12.5px; color: var(--green-dark); background: var(--green-bg); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
+
+  .toc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .toc-list a { display: block; padding: 6px 10px; border-radius: 8px; font: 600 13px Barlow, sans-serif; color: var(--text-secondary); }
+  .toc-list a:hover { background: var(--card-bg); color: var(--navy); }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar">
+    <a href="index.html" class="brand"><span class="brand-mark">🎱</span> Cave <strong>&nbsp;Handbook</strong></a>
+    <nav class="topnav">
+      <a href="index.html">Home</a>
+      <a href="library.html" class="active">Library</a>
+      <a href="library.html">My Queue</a>
+      <a href="#">Changelog</a>
+      <a href="#">People</a>
+    </nav>
+    <div class="topbar-right">
+      <div class="search-box"><span>&#128269;</span><input type="text" placeholder="Search SOPs..."></div>
+      <div class="avatar">DK</div>
+    </div>
+  </header>
+
+  <div class="page-body" id="page-body">
+    <p class="muted" id="not-found" style="display:none">SOP not found. <a href="library.html" style="text-decoration:underline">Back to the library</a>.</p>
+    <div id="sop-content" style="display:none">
+      <div class="breadcrumb">
+        <a href="library.html">Library</a><span class="sep">/</span>
+        <a href="#" id="crumb-dept">Department</a><span class="sep">/</span>
+        <span id="crumb-title">SOP</span>
+      </div>
+
+      <div class="sop-header">
+        <div>
+          <div class="row" style="gap:10px;margin-bottom:10px;">
+            <span class="badge" id="status-badge"></span>
+            <span class="faint small" id="version-label"></span>
+          </div>
+          <h1 id="sop-title"></h1>
+          <p class="subtitle" id="sop-subtitle"></p>
+        </div>
+        <div class="sop-actions">
+          <button class="btn btn-secondary">History</button>
+          <button class="btn btn-secondary">Edit</button>
+          <a class="btn btn-primary" id="run-btn" href="#">Run this SOP</a>
+        </div>
+      </div>
+
+      <div class="sop-layout">
+        <main>
+          <div class="never-banner" id="never-banner" style="display:none">
+            <span class="tag">Never do this</span>
+            <span id="never-text"></span>
+          </div>
+
+          <div class="section" id="section-before">
+            <h2>Before you start</h2>
+            <ul class="before-list" id="before-list"></ul>
+          </div>
+
+          <div class="section" id="section-steps">
+            <h2>Steps</h2>
+            <div id="steps-list"></div>
+          </div>
+
+          <div class="section" id="section-forms">
+            <h2>Forms</h2>
+            <ul class="forms-list" id="forms-list"></ul>
+          </div>
+
+          <div class="section" id="section-related">
+            <h2>Related</h2>
+            <ul class="related-list" id="related-list"></ul>
+          </div>
+        </main>
+
+        <aside>
+          <div class="rail-card">
+            <h3>On this page</h3>
+            <ul class="toc-list" id="toc-list"></ul>
+          </div>
+
+          <div class="rail-card">
+            <h3>Details</h3>
+            <div class="meta-line"><span class="k">Owner</span><span class="v" id="meta-owner"></span></div>
+            <div class="meta-line"><span class="k">Last reviewed</span><span class="v" id="meta-reviewed"></span></div>
+            <div class="meta-line"><span class="k">Next review</span><span class="v" id="meta-next"></span></div>
+          </div>
+
+          <div class="rail-card">
+            <h3>Signed off by</h3>
+            <div id="signoff-list"></div>
+            <div class="signoff-note" id="signoff-note" style="display:none"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/data.js"></script>
+<script>
+  const id = new URLSearchParams(location.search).get("id");
+  const sop = getSop(id);
+
+  if (!sop) {
+    document.getElementById("not-found").style.display = "block";
+  } else {
+    document.getElementById("sop-content").style.display = "block";
+    const dept = getDepartment(sop.department);
+
+    document.title = sop.title + " — The Cave Handbook";
+    document.getElementById("crumb-dept").textContent = dept.name;
+    document.getElementById("crumb-dept").href = `library.html?dept=${dept.id}`;
+    document.getElementById("crumb-title").textContent = sop.title;
+
+    const badge = document.getElementById("status-badge");
+    badge.textContent = statusMeta(sop.status).label;
+    badge.classList.add("badge-" + sop.status);
+
+    document.getElementById("version-label").textContent = sop.version || "";
+    document.getElementById("sop-title").textContent = sop.title;
+    document.getElementById("sop-subtitle").textContent = sop.subtitle || "";
+    document.getElementById("run-btn").href = `run.html?id=${sop.id}`;
+
+    if (sop.neverDoThis) {
+      document.getElementById("never-banner").style.display = "flex";
+      document.getElementById("never-text").textContent = sop.neverDoThis;
+    }
+
+    // Before you start
+    const beforeEl = document.getElementById("before-list");
+    if (sop.beforeYouStart && sop.beforeYouStart.length) {
+      beforeEl.innerHTML = sop.beforeYouStart.map((b) => `<li>${b}</li>`).join("");
+    } else {
+      document.getElementById("section-before").style.display = "none";
+    }
+
+    // Steps
+    const typeLabel = { info: "", checklist: "Checklist", decision: "Decision point" };
+    document.getElementById("steps-list").innerHTML = sop.steps
+      .map((step, i) => {
+        let extra = "";
+        if (step.type === "checklist" && step.items) {
+          extra = `<ul class="before-list" style="margin-top:8px">${step.items.map((it) => `<li>${it}</li>`).join("")}</ul>`;
+        }
+        if (step.type === "decision" && step.options) {
+          extra = `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${step.options
+            .map((o) => `<span class="badge" style="background:var(--card-bg);color:var(--text-secondary)">${o.label}</span>`)
+            .join("")}</div>`;
+        }
+        return `
+        <div class="step-row" id="step-${i}">
+          <div class="step-num">${i + 1}</div>
+          <div>
+            <h3>${step.title}${typeLabel[step.type] ? `<span class="step-type">${typeLabel[step.type]}</span>` : ""}</h3>
+            <p>${step.body || ""}</p>
+            ${extra}
+          </div>
+        </div>`;
+      })
+      .join("");
+
+    // TOC
+    document.getElementById("toc-list").innerHTML = [
+      sop.beforeYouStart && sop.beforeYouStart.length ? `<li><a href="#section-before">Before you start</a></li>` : "",
+      `<li><a href="#section-steps">Steps</a></li>`,
+      sop.forms && sop.forms.length ? `<li><a href="#section-forms">Forms</a></li>` : "",
+      sop.relatedIds && sop.relatedIds.length ? `<li><a href="#section-related">Related</a></li>` : "",
+    ].join("");
+
+    // Forms
+    if (sop.forms && sop.forms.length) {
+      document.getElementById("forms-list").innerHTML = sop.forms
+        .map((f) => `<li><a href="#">&#128196; ${f}</a></li>`)
+        .join("");
+    } else {
+      document.getElementById("section-forms").style.display = "none";
+    }
+
+    // Related
+    if (sop.relatedIds && sop.relatedIds.length) {
+      document.getElementById("related-list").innerHTML = sop.relatedIds
+        .map((rid) => {
+          const r = getSop(rid);
+          return r ? `<li><a href="sop.html?id=${r.id}">${r.title}</a></li>` : "";
+        })
+        .join("");
+    } else {
+      document.getElementById("section-related").style.display = "none";
+    }
+
+    // Meta rail
+    document.getElementById("meta-owner").innerHTML = `<span class="pill-avatar" style="margin-right:6px">${sop.owner.initials}</span>${sop.owner.name}`;
+    document.getElementById("meta-reviewed").textContent = sop.lastReviewed || "—";
+    document.getElementById("meta-next").textContent = sop.nextReview || "—";
+
+    // Sign-offs
+    const signoffEl = document.getElementById("signoff-list");
+    if (sop.signedOffBy && sop.signedOffBy.length) {
+      signoffEl.innerHTML = sop.signedOffBy
+        .map(
+          (p) => `<div class="signoff-row">
+            <span class="pill-avatar">${(p.initials || p.name.split(" ").map((w) => w[0]).join("")).toUpperCase()}</span>
+            <span class="name">${p.name}</span>
+            <span class="date">${p.date}</span>
+          </div>`
+        )
+        .join("");
+      const mine = sop.signedOffBy.find((p) => p.name === CURRENT_USER.name);
+      if (mine) {
+        document.getElementById("signoff-note").style.display = "block";
+        document.getElementById("signoff-note").textContent = `You signed off ${sop.version || "this"} on ${mine.date}.`;
+      }
+    } else {
+      signoffEl.innerHTML = `<p class="muted small">Not yet signed off.</p>`;
+    }
+  }
+</script>
+</body>
+</html>
