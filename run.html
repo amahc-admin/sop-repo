@@ -62,6 +62,15 @@
   .flag-link:hover { color: var(--navy); }
   .flag-link.flagged { color: var(--amber-dark); }
 
+  .phase-eyebrow { font: 700 11px "Barlow Condensed", sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); margin-bottom: 2px; }
+  .step-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tag-chip {
+    display: inline-flex; align-items: center; gap: 4px; font: 700 10.5px "Barlow Condensed", sans-serif;
+    text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; border-radius: 999px;
+  }
+  .tag-approval { background: var(--amber-bg); color: var(--amber-dark); }
+  .tag-confidential { background: var(--card-bg); color: var(--text-muted); border: 1px solid var(--border-strong); }
+
   .run-footer { padding: 16px 20px 24px; display: flex; gap: 10px; border-top: 1px solid var(--border); }
   .run-footer .btn { flex: 1; }
   .run-footer .btn-secondary { flex: 0 0 auto; padding-left: 18px; padding-right: 18px; }
@@ -160,7 +169,11 @@
       }
 
       const step = sop.steps[stepIndex];
-      let inner = `<div class="sop-name">${sop.title}</div><div class="step-card"><h2>${step.title}</h2>`;
+      const tagChip = { approval: `<span class="tag-chip tag-approval">Approval required</span>`, confidential: `<span class="tag-chip tag-confidential">&#128274; Confidential</span>` };
+      let inner = `<div class="sop-name">${sop.title}</div>`;
+      if (step.phase) inner += `<div class="phase-eyebrow">${step.phase}</div>`;
+      inner += `<div class="step-card"><h2>${step.title}</h2>`;
+      if (step.tags && step.tags.length) inner += `<div class="step-tags">${step.tags.map((t) => tagChip[t] || "").join("")}</div>`;
       if (step.body) inner += `<p class="body-text">${step.body}</p>`;
 
       if (step.type === "checklist" && step.items) {
