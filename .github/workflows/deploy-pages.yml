@@ -1,8 +1,11 @@
 name: Deploy Cave Handbook to GitHub Pages
 
+# Triggers on pushes to this repo's actual default branch. If that branch
+# is ever renamed (e.g. merged into a real `main`), update the branch name
+# below to match, or this workflow silently stops firing.
 on:
   push:
-    branches: [main]
+    branches: [claude/sop-repository-hub-qb5c2i]
     paths:
       - "web/**"
       - ".github/workflows/deploy-pages.yml"
