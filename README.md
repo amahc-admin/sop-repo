@@ -1,52 +1,59 @@
 # The Cave Handbook — SOP Repository Hub
 
-A team-facing hub for standard operating procedures, built from the design
-mockups in `SOP_Site_Mockups_standalone.html`. Static front-end prototype —
-no build step, no backend. Sample data lives in `assets/js/data.js`.
+A team-facing hub for standard operating procedures at A Man & His Cave: a
+static site anyone with the link can open (no Claude account needed),
+backed by a real Postgres database (Supabase) for shared, persistent data.
 
-## Pages
+**See [SETUP.md](SETUP.md) for how to stand this up** (create the Supabase
+project, run the migration, set department passcodes, turn on GitHub
+Pages).
 
-- **`index.html`** — Home dashboard: greeting, department overview tiles
-  (SOP counts by status), "Waiting on you" queue, and team health.
-- **`library.html`** — Browse all SOPs. Filter by department and status,
-  toggle grid/list view, search by title.
-- **`sop.html?id=<sop-id>`** — SOP detail: owner, review dates, sign-off
-  history, "before you start" checklist, step overview, forms and related
-  SOPs.
-- **`run.html?id=<sop-id>`** — Phone-first step player for actually running
-  a procedure: info steps, checklists that gate progress, decision steps
-  with branching options, step-flagging, pause, and a sign-off completion
-  screen with a recap of decisions made.
+## How it works
 
-## Design system
+- **`web/`** — the actual app: a single-page static site (`index.html` +
+  `js/config.js` + `js/api.js`). This is what GitHub Pages deploys.
+- **`supabase/migrations/0001_init.sql`** — the database schema, row-level
+  security policies, and the passcode-gated RPC functions that back every
+  write (approve, edit, add SOP, disapprove, suggestions).
+- **`supabase/seed.sql`** — the handbook's current content (SOPs,
+  departments, approval history), migrated in for the initial rollout.
+- **`.github/workflows/deploy-pages.yml`** — deploys `web/` to GitHub Pages
+  on every push to `main`.
 
-Colors, type (Barlow / Barlow Condensed via Google Fonts) and status
-badges (current / review due / overdue / draft) live in
-`assets/css/styles.css` as CSS custom properties, matching the navy/yellow
-brand from the mockups.
+Access control model: reads are public: anyone with the link can browse the
+whole handbook. Writes require being "logged in" as a department (picked
+from the avatar menu, top right), which means knowing that department's
+shared passcode — verified server-side on every single write, not just a
+client-side label. See SETUP.md's "Security notes" section for the
+tradeoffs of this approach versus real per-person accounts.
+
+## Features
+
+- Home dashboard, department-filterable Library (grid/list), SOP detail
+  pages, and a phone-first Run mode for actually walking through a
+  procedure step by step.
+- Department-gated **Approve**, **Edit**, **Disapprove** (delete), and
+  **Add SOP** actions on every SOP.
+- Per-SOP **Suggestions & feedback**, plus a dedicated Suggestions review
+  page for approving them (gated by the target SOP's department).
+- Update history (who approved/edited a SOP and when) on every SOP page.
 
 ## Running locally
 
-No build tooling required — just serve the directory statically:
+`web/` is a plain static site — serve it and point `web/js/config.js` at
+your Supabase project:
 
 ```
+cd web
 python3 -m http.server 8000
 ```
 
 Then open `http://localhost:8000/index.html`.
 
-## Data model
+## Superseded prototype
 
-Everything is driven by the `SOPS` array in `assets/js/data.js` — each SOP
-has metadata (owner, status, review dates, sign-offs) and a `steps` array
-consumed by both the detail page (as an outline) and the run mode (as an
-interactive player). Add a new SOP by adding an entry there; no other code
-changes are needed for it to show up in the library, dashboard counts, and
-run mode.
-
-## Next steps
-
-This is a front-end prototype: there's no persistence layer, auth, or real
-sign-off/audit trail yet. Natural next steps are a backend (SOP CRUD,
-review scheduling, sign-off records) and wiring the "Edit" / "History" /
-"New SOP" actions currently stubbed in the UI.
+`index.html`, `library.html`, `sop.html`, `run.html` and `assets/` at the
+repo root are an earlier, backend-less static prototype (no persistence,
+no auth) that predates `web/`. They're left in place rather than deleted
+unilaterally — if you're happy the `web/` app has replaced them, they can
+be removed.
