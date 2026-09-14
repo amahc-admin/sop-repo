@@ -118,7 +118,7 @@ create or replace function _check_passcode(p_department_id text, p_passcode text
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_hash text;
@@ -135,7 +135,7 @@ create or replace function _unique_sop_id(p_title text)
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_base text;
@@ -181,7 +181,7 @@ create or replace function login_department(p_department_id text, p_passcode tex
 returns table (id text, name text, code text)
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   perform _check_passcode(p_department_id, p_passcode);
@@ -195,7 +195,7 @@ create or replace function approve_sop(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_dept departments%rowtype;
@@ -228,7 +228,7 @@ create or replace function disapprove_sop(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   perform _check_passcode(p_department_id, p_passcode);
@@ -248,7 +248,7 @@ create or replace function edit_sop(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_dept departments%rowtype;
@@ -289,7 +289,7 @@ create or replace function add_sop(
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_id text;
@@ -342,7 +342,7 @@ create or replace function add_suggestion(
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_dept departments%rowtype;
@@ -369,7 +369,7 @@ create or replace function approve_suggestion(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_dept departments%rowtype;
