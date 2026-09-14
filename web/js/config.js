@@ -4,6 +4,6 @@
 // passcode-checked RPC functions in supabase/migrations/0001_init.sql), not
 // by keeping this key secret.
 window.SUPABASE_CONFIG = {
-  url: "https://YOUR-PROJECT-REF.supabase.co",
-  anonKey: "YOUR-ANON-KEY",
+  url: "https://ekavaiissbgxcyvtorjz.supabase.co",
+  anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrYXZhaWlzc2JneGN5dnRvcmp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0MTkyNTUsImV4cCI6MjEwNDk5NTI1NX0.iVhz65GHTX3PFy4CzbGTGGe5iELq9PpmgLPwSpCo4NY",
 };
