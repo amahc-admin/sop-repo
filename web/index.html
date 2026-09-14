@@ -128,6 +128,18 @@
   .vm-item-login { padding: 8px; border-radius: 8px; background: var(--card-bg); }
   .vm-passcode-input { width: 100%; font: 400 13.5px Barlow, sans-serif; color: var(--text-primary); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; margin-top: 8px; }
 
+  /* ---- Login gate (shown before any page content until logged in) ---- */
+  .login-gate-wrap { max-width: 420px; margin: 48px auto; text-align: center; }
+  .login-gate-wrap .brand-mark { width: 56px; height: 56px; font-size: 28px; margin: 0 auto 18px; }
+  .login-gate-wrap h1 { font: 700 27px "Barlow Condensed", sans-serif; letter-spacing: .02em; text-transform: uppercase; margin-bottom: 6px; }
+  .login-gate-wrap > p { margin-bottom: 26px; }
+  .login-gate { text-align: left; display: flex; flex-direction: column; gap: 8px; }
+  .login-gate .vm-item { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 8px; cursor: pointer; font: 600 14px Barlow, sans-serif; color: var(--text-primary); background: var(--card-bg); border: 1px solid var(--border); }
+  .login-gate .vm-item:hover { background: var(--bg-soft-2); }
+  .login-gate .vm-item.selected { background: var(--bg-soft-2); border-color: var(--border-strong); }
+  .login-gate .vm-dot { width: 26px; height: 26px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border-strong); display: grid; place-items: center; font: 700 11px "Barlow Condensed", sans-serif; flex-shrink: 0; }
+  .login-gate .vm-item-login { border: 1px solid var(--border-strong); }
+
   .waiting-cta { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .waiting-cta p { margin: 0; }
 
@@ -779,7 +791,89 @@ globalSearch.addEventListener("input", (e) => {
   }
 });
 
+// Shown instead of any page content until a department logs in. Similar
+// reveal-a-passcode-field pattern to the topbar viewer menu, laid out as a
+// full page instead of a dropdown -- but with its OWN pending-selection
+// state (gatePendingDeptId), deliberately not shared with the topbar
+// menu's pendingDeptId. The gate lives inside #page-body, outside
+// .viewer-wrap, so any click on it also bubbles to the document-level
+// "close the topbar menu on outside click" listener; that listener resets
+// pendingDeptId as a side effect, which was clobbering this gate's
+// selection out from under it when the two shared one variable.
+let gatePendingDeptId = null;
+function renderLoginGate() {
+  const items = VIEWER_DEPTS.map((d) => {
+    if (gatePendingDeptId === d.id) {
+      return `<div class="vm-item-login" data-dept="${d.id}">
+        <div class="vm-item selected"><span class="vm-dot">${d.code}</span><span>${d.name}</span></div>
+        <input type="password" class="vm-passcode-input" id="gate-passcode-input" placeholder="Department passcode" autocomplete="off">
+        <div class="row" style="gap:8px;margin-top:8px">
+          <button class="btn btn-primary" id="gate-login-btn" style="flex:1">Log in</button>
+          <button class="btn btn-secondary" id="gate-login-cancel">Cancel</button>
+        </div>
+        <p class="muted small" id="gate-login-error" style="min-height:16px;margin-top:6px"></p>
+      </div>`;
+    }
+    return `<div class="vm-item" data-dept="${d.id}"><span class="vm-dot">${d.code}</span><span>${d.name}</span></div>`;
+  }).join("");
+
+  pageBody.innerHTML = `
+    <div class="login-gate-wrap">
+      <div class="brand-mark">&#127921;</div>
+      <h1>Cave Handbook</h1>
+      <p class="muted">Pick your department and enter its passcode to continue.</p>
+      <div class="login-gate">${items}</div>
+    </div>`;
+
+  pageBody.querySelectorAll(".login-gate .vm-item[data-dept]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      gatePendingDeptId = el.dataset.dept;
+      renderLoginGate();
+      const input = document.getElementById("gate-passcode-input");
+      if (input) input.focus();
+    });
+  });
+
+  const loginBtn = document.getElementById("gate-login-btn");
+  if (loginBtn) {
+    const input = document.getElementById("gate-passcode-input");
+    const errEl = document.getElementById("gate-login-error");
+    const doLogin = async () => {
+      const passcode = input.value;
+      if (!passcode) { errEl.textContent = "Enter the passcode."; return; }
+      loginBtn.disabled = true;
+      loginBtn.textContent = "Checking...";
+      try {
+        const dept = await API.login(gatePendingDeptId, passcode);
+        CURRENT_VIEWER = { id: dept.id, name: dept.name, code: dept.code, passcode };
+        setViewer(CURRENT_VIEWER);
+        gatePendingDeptId = null;
+        updateViewerAvatar();
+        render();
+      } catch (err) {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "Log in";
+        errEl.textContent = "Wrong passcode.";
+      }
+    };
+    loginBtn.addEventListener("click", (e) => { e.stopPropagation(); doLogin(); });
+    input.addEventListener("click", (e) => e.stopPropagation());
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+    document.getElementById("gate-login-cancel").addEventListener("click", (e) => {
+      e.stopPropagation();
+      gatePendingDeptId = null;
+      renderLoginGate();
+    });
+  }
+}
+
 function render() {
+  if (!CURRENT_VIEWER) {
+    appShell.style.display = "block"; runRoot.style.display = "none";
+    renderLoginGate();
+    return;
+  }
   const { path, params } = parseHash();
   window.scrollTo(0, 0);
   pushNav();
