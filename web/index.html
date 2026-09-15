@@ -1605,6 +1605,19 @@ function renderSopDetail(id) {
 }
 
 /* ============================== SOP EDIT ============================== */
+// A form entry is either a plain string (no linked document yet -- shows
+// "Not linked" on the SOP page) or {name, href} once a document URL is
+// attached. These two helpers convert between that and the "Name | URL"
+// textarea format so linking a document is just filling in the URL half.
+function formsToText(forms) {
+  return (forms || []).map((f) => (typeof f === "string" ? f : `${f.name}${f.href ? " | " + f.href : ""}`)).join("\n");
+}
+function textToForms(el) {
+  return el.value.split("\n").map((s) => s.trim()).filter(Boolean).map((line) => {
+    const [name, href] = line.split("|").map((s) => (s || "").trim());
+    return href ? { name, href } : name;
+  });
+}
 function fieldsFromSop(sop) {
   return {
     title: sop.title || "",
@@ -1688,7 +1701,7 @@ function renderSopEdit(id) {
 
     <div class="edit-field"><label>Success criteria <span class="muted small">(one per line)</span></label><textarea id="ef-success" rows="3">${escapeHtml(f.successCriteria.join("\n"))}</textarea></div>
     <div class="edit-field"><label>Escalation path <span class="muted small">(When | Action — one per line)</span></label><textarea id="ef-escalation" rows="3">${escapeHtml(f.escalation.map((e) => `${e.when} | ${e.action}`).join("\n"))}</textarea></div>
-    <div class="edit-field"><label>Forms <span class="muted small">(one per line)</span></label><textarea id="ef-forms" rows="2">${escapeHtml(f.forms.join("\n"))}</textarea></div>
+    <div class="edit-field"><label>Forms <span class="muted small">(Name | Link URL — one per line, URL optional)</span></label><textarea id="ef-forms" rows="2">${escapeHtml(formsToText(f.forms))}</textarea></div>
 
     <div class="edit-actions">
       <button class="btn btn-secondary" id="edit-cancel">Cancel</button>
@@ -1760,7 +1773,7 @@ function renderSopEdit(id) {
       steps,
       successCriteria: linesOf(document.getElementById("ef-success")),
       escalation: pairsOf(document.getElementById("ef-escalation"), "when", "action"),
-      forms: linesOf(document.getElementById("ef-forms")),
+      forms: textToForms(document.getElementById("ef-forms")),
     };
     const neverVal = document.getElementById("ef-never").value.trim();
     fields.neverDoThis = neverVal || undefined;
@@ -1842,7 +1855,7 @@ function renderSopNew() {
 
     <div class="edit-field"><label>Success criteria <span class="muted small">(one per line)</span></label><textarea id="ef-success" rows="3"></textarea></div>
     <div class="edit-field"><label>Escalation path <span class="muted small">(When | Action — one per line)</span></label><textarea id="ef-escalation" rows="3"></textarea></div>
-    <div class="edit-field"><label>Forms <span class="muted small">(one per line)</span></label><textarea id="ef-forms" rows="2"></textarea></div>
+    <div class="edit-field"><label>Forms <span class="muted small">(Name | Link URL — one per line, URL optional)</span></label><textarea id="ef-forms" rows="2"></textarea></div>
 
     <div class="edit-actions">
       <button class="btn btn-secondary" id="edit-cancel">Cancel</button>
@@ -1913,7 +1926,7 @@ function renderSopNew() {
     const subtitle = document.getElementById("ef-subtitle").value.trim();
     const beforeYouStart = linesOf(document.getElementById("ef-before"));
     const toolsSystems = pairsOf(document.getElementById("ef-tools"), "name", "note");
-    const forms = linesOf(document.getElementById("ef-forms"));
+    const forms = textToForms(document.getElementById("ef-forms"));
     const successCriteria = linesOf(document.getElementById("ef-success"));
     const escalation = pairsOf(document.getElementById("ef-escalation"), "when", "action");
     const neverVal = document.getElementById("ef-never").value.trim();
