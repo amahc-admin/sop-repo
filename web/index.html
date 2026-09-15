@@ -470,7 +470,15 @@ const STATUSES = [
 ];
 
 const DEPT_CODES = { operations: "OPS", sales: "SAL", cx: "CX", installations: "INS", marketing: "MKT", accounts: "ACC", exec: "EXA" };
-const VIEWER_DEPTS = DEPARTMENTS.map((d) => ({ id: d.id, name: d.name, code: DEPT_CODES[d.id] }));
+// General Employees is a login option, not a real SOP-owning department --
+// it never appears in DEPARTMENTS (so it's absent from Library filters,
+// Home's dept tiles, and Team health), but it IS a valid thing to log in
+// as (VIEWER_DEPTS), and it can submit suggestions. It just can't
+// approve/edit/add/disapprove a SOP -- see MANAGE_SOPS_IDS and the
+// matching can_manage_sops column/checks in the database.
+const GENERAL_EMPLOYEE_DEPT = { id: "general", name: "General Employees", code: "GEN" };
+const VIEWER_DEPTS = [...DEPARTMENTS.map((d) => ({ id: d.id, name: d.name, code: DEPT_CODES[d.id] })), GENERAL_EMPLOYEE_DEPT];
+const MANAGE_SOPS_IDS = new Set(DEPARTMENTS.map((d) => d.id));
 // CURRENT_VIEWER also carries a `passcode` field -- the shared department
 // passcode, cached in this browser so writes don't ask for it every time.
 // It never leaves the browser except as an argument to the passcode-gated
@@ -990,9 +998,11 @@ function renderLibrary(params) {
         <div class="library-header">
           <h1 id="dept-heading">All SOPs</h1>
           <div class="row" style="gap:10px">
-            ${CURRENT_VIEWER
-              ? `<button class="btn btn-secondary" id="add-sop-btn" title="Add a new SOP for ${CURRENT_VIEWER.name}">+ Add SOP</button>`
-              : `<button class="btn btn-secondary" id="add-sop-btn" disabled title="Set your department to add a new SOP">+ Add SOP</button>`}
+            ${!CURRENT_VIEWER
+              ? `<button class="btn btn-secondary" id="add-sop-btn" disabled title="Set your department to add a new SOP">+ Add SOP</button>`
+              : !MANAGE_SOPS_IDS.has(CURRENT_VIEWER.id)
+              ? `<button class="btn btn-secondary" id="add-sop-btn" disabled title="Only department leads can add a SOP">+ Add SOP</button>`
+              : `<button class="btn btn-secondary" id="add-sop-btn" title="Add a new SOP for ${CURRENT_VIEWER.name}">+ Add SOP</button>`}
             <div class="view-toggle">
               <button data-view="grid" class="${libState.view === "grid" ? "active" : ""}">Grid</button>
               <button data-view="list" class="${libState.view === "list" ? "active" : ""}">List</button>
