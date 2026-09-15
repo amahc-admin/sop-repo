@@ -46,6 +46,8 @@ const API = (() => {
     listSopEvents() { return rest("sop_events?select=*"); },
     listSuggestions() { return rest("suggestions?select=*"); },
     listSopEditProposals() { return rest("sop_edit_proposals?select=*"); },
+    listDirectory() { return rest("directory_entries?select=*"); },
+    listDirectoryEditProposals() { return rest("directory_edit_proposals?select=*"); },
 
     // ---- writes (all passcode-gated server-side) ----
     login(loginId, passcode) {
@@ -79,6 +81,28 @@ const API = (() => {
     },
     rejectSopEdit(proposalId, loginId, passcode, lastName) {
       return rpc("reject_sop_edit", { p_proposal_id: proposalId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
+    },
+
+    addDirectoryEntry(loginId, passcode, lastName, entry) {
+      return rpc("add_directory_entry", { p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_entry: entry });
+    },
+    approveDirectoryEntry(entryId, loginId, passcode, lastName) {
+      return rpc("approve_directory_entry", { p_entry_id: entryId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
+    },
+    disapproveDirectoryEntry(entryId, loginId, passcode, lastName) {
+      return rpc("disapprove_directory_entry", { p_entry_id: entryId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
+    },
+    editDirectoryEntry(entryId, loginId, passcode, lastName, fields) {
+      return rpc("edit_directory_entry", { p_entry_id: entryId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_fields: fields });
+    },
+    proposeDirectoryEdit(entryId, loginId, passcode, lastName, fields) {
+      return rpc("propose_directory_edit", { p_entry_id: entryId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_fields: fields });
+    },
+    approveDirectoryEdit(proposalId, loginId, passcode, lastName) {
+      return rpc("approve_directory_edit", { p_proposal_id: proposalId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
+    },
+    rejectDirectoryEdit(proposalId, loginId, passcode, lastName) {
+      return rpc("reject_directory_edit", { p_proposal_id: proposalId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
     },
   };
 })();

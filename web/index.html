@@ -428,7 +428,7 @@
       <a data-route="/library">Library</a>
       <a data-route="/library">My Queue</a>
       <a data-route="/suggestions">Suggestions</a>
-      <a data-route="#">People</a>
+      <a data-route="/directory">Directory</a>
     </nav>
     <div class="topbar-right">
       <div class="search-box">
@@ -584,6 +584,8 @@ function wireSuggestionsSection(sop) {
 }
 
 let SOPS = []; // populated from the DB at boot (see loadData())
+let DIRECTORY = []; // populated from directory_entries at boot (see boot())
+let DIRECTORY_EDIT_PROPOSALS = []; // populated from directory_edit_proposals at boot (see boot())
 
 function getSop(id) { return SOPS.find((s) => s.id === id); }
 function getDepartment(id) { return DEPARTMENTS.find((d) => d.id === id); }
@@ -922,6 +924,16 @@ function render() {
     appShell.style.display = "block"; runRoot.style.display = "none";
     document.querySelectorAll('#topnav a[data-route="/suggestions"]')[0].classList.add("active");
     renderSuggestionsPage();
+  } else if (path === "/directory") {
+    appShell.style.display = "block"; runRoot.style.display = "none";
+    document.querySelectorAll('#topnav a[data-route="/directory"]')[0].classList.add("active");
+    renderDirectory();
+  } else if (path === "/directory/new") {
+    appShell.style.display = "block"; runRoot.style.display = "none";
+    renderDirectoryNew();
+  } else if (path.indexOf("/directory/edit/") === 0) {
+    appShell.style.display = "block"; runRoot.style.display = "none";
+    renderDirectoryEdit(decodeURIComponent(path.slice(16)));
   } else if (path === "/new") {
     appShell.style.display = "block"; runRoot.style.display = "none";
     renderSopNew();
@@ -1162,7 +1174,8 @@ function renderSuggestionsPage() {
       <div class="view-toggle" id="review-filters">${filters}</div>
     </div>
     <div id="review-list">${rows}</div>
-    <div id="edit-proposals-section" style="margin-top:32px">${editProposalsSectionHtml()}</div>`;
+    <div id="edit-proposals-section" style="margin-top:32px">${editProposalsSectionHtml()}</div>
+    <div id="directory-proposals-section" style="margin-top:32px">${directoryProposalsSectionHtml()}</div>`;
 
   document.querySelectorAll("#review-filters [data-filter]").forEach((btn) => {
     btn.addEventListener("click", () => { reviewFilter = btn.dataset.filter; renderSuggestionsPage(); });
@@ -1190,6 +1203,7 @@ function renderSuggestionsPage() {
     });
   });
   wireEditProposalsSection();
+  wireDirectoryProposalsSection();
 }
 
 /* ============================== PENDING SOP EDITS (Member proposals) ====== */
@@ -1335,6 +1349,133 @@ function wireEditProposalsSection() {
       btn.textContent = "Rejecting...";
       try {
         await API.rejectSopEdit(p.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        p.status = "rejected";
+        p.decidedByLastName = CURRENT_VIEWER.lastName;
+        p.decidedDate = eventStamp().fullDate;
+        renderSuggestionsPage();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Reject";
+        alert("Couldn't reject: " + err.message);
+      }
+    });
+  });
+}
+
+/* ==================== PENDING DIRECTORY EDITS (Member proposals) ========= */
+const DIRECTORY_FIELD_LABELS = { name: "Name", role: "Role", department: "Department", email: "Email", phone: "Phone", notes: "Notes" };
+function diffDirectoryProposalFields(entry, fields) {
+  const out = [];
+  Object.keys(fields || {}).forEach((key) => {
+    if (!(key in DIRECTORY_FIELD_LABELS)) return;
+    const oldVal = entry ? entry[key] : undefined;
+    const newVal = fields[key];
+    if ((oldVal || "") === (newVal || "")) return;
+    const display = (v) => (key === "department" ? ((getDepartment(v) || {}).name || v || "(none)") : (v || "(empty)"));
+    out.push({ key, label: DIRECTORY_FIELD_LABELS[key], oldVal: display(oldVal), newVal: display(newVal) });
+  });
+  return out;
+}
+let directoryProposalFilter = "pending";
+function directoryProposalsSectionHtml() {
+  const all = DIRECTORY_EDIT_PROPOSALS.slice().sort((a, b) => b.ts - a.ts);
+  const counts = {
+    all: all.length,
+    pending: all.filter((p) => p.status === "pending").length,
+    approved: all.filter((p) => p.status === "approved").length,
+    rejected: all.filter((p) => p.status === "rejected").length,
+  };
+  const list = directoryProposalFilter === "all" ? all : all.filter((p) => p.status === directoryProposalFilter);
+  const filterDefs = [
+    { id: "pending", label: "Pending" },
+    { id: "approved", label: "Approved" },
+    { id: "rejected", label: "Rejected" },
+    { id: "all", label: "All" },
+  ];
+  const filters = filterDefs.map((f) => `<button data-dpfilter="${f.id}" class="${directoryProposalFilter === f.id ? "active" : ""}">${f.label} (${counts[f.id]})</button>`).join("");
+
+  const rows = list.length
+    ? list.map((p) => {
+        const entry = DIRECTORY.find((x) => x.id === p.entryId);
+        const diff = diffDirectoryProposalFields(entry, p.fields);
+        const diffHtml = diff.length
+          ? diff.map((d) => `
+            <div style="margin-bottom:10px">
+              <div class="muted small" style="font-weight:600">${escapeHtml(d.label)}</div>
+              <div style="color:var(--red);white-space:pre-wrap">&minus; ${escapeHtml(d.oldVal)}</div>
+              <div style="color:var(--green);white-space:pre-wrap">+ ${escapeHtml(d.newVal)}</div>
+            </div>`).join("")
+          : `<p class="muted small">No changes detected.</p>`;
+        let actionHtml = "";
+        if (p.status === "approved") {
+          actionHtml = `<span class="review-note">Approved by ${escapeHtml(p.decidedByLastName || "—")}${p.decidedDate ? " · " + p.decidedDate : ""}</span>`;
+        } else if (p.status === "rejected") {
+          actionHtml = `<span class="review-note">Rejected by ${escapeHtml(p.decidedByLastName || "—")}${p.decidedDate ? " · " + p.decidedDate : ""}</span>`;
+        } else if (!entry) {
+          actionHtml = `<span class="review-note">This person no longer exists.</span>`;
+        } else if (!isAdmin(CURRENT_VIEWER)) {
+          actionHtml = `<button class="btn btn-secondary" disabled title="Only an Admin can decide this">Approve</button> <button class="btn btn-secondary" disabled title="Only an Admin can decide this">Reject</button>`;
+        } else {
+          actionHtml = `<button class="btn btn-secondary" data-approve-dir-edit="${p.id}">Approve</button> <button class="btn btn-danger" data-reject-dir-edit="${p.id}">Reject</button>`;
+        }
+        return `<div class="review-item">
+          <div class="suggestion-meta">
+            <span class="suggestion-dept">${escapeHtml(p.lastName)} (${p.loginName})</span>
+            <span class="suggestion-status suggestion-status-${p.status === "approved" ? "approved" : "pending"}">${p.status === "pending" ? "Pending" : p.status === "approved" ? "Approved" : "Rejected"}</span>
+            <span class="suggestion-date">${new Date(p.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+          </div>
+          <div class="target" data-person="${entry ? entry.id : ""}">${entry ? entry.name : "Unknown person"}</div>
+          <div class="proposal-diff">${diffHtml}</div>
+          <div class="review-footer">${actionHtml}</div>
+        </div>`;
+      }).join("")
+    : `<div class="empty-state">No ${directoryProposalFilter === "all" ? "" : directoryProposalFilter + " "}directory proposals yet.</div>`;
+
+  return `
+    <div class="library-header">
+      <h2>Pending directory changes</h2>
+      <div class="view-toggle" id="directory-proposal-filters">${filters}</div>
+    </div>
+    <div id="directory-proposal-list">${rows}</div>`;
+}
+function wireDirectoryProposalsSection() {
+  document.querySelectorAll("#directory-proposal-filters [data-dpfilter]").forEach((btn) => {
+    btn.addEventListener("click", () => { directoryProposalFilter = btn.dataset.dpfilter; renderSuggestionsPage(); });
+  });
+  document.querySelectorAll("#directory-proposals-section .target[data-person]").forEach((el) => {
+    if (el.dataset.person) el.addEventListener("click", () => go("/directory/edit/" + el.dataset.person));
+  });
+  document.querySelectorAll("[data-approve-dir-edit]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const p = DIRECTORY_EDIT_PROPOSALS.find((x) => x.id === btn.dataset.approveDirEdit);
+      if (!p || !CURRENT_VIEWER) return;
+      btn.disabled = true;
+      btn.textContent = "Approving...";
+      try {
+        await API.approveDirectoryEdit(p.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        p.status = "approved";
+        p.decidedByLastName = CURRENT_VIEWER.lastName;
+        p.decidedDate = eventStamp().fullDate;
+        const entry = DIRECTORY.find((x) => x.id === p.entryId);
+        if (entry) Object.assign(entry, p.fields);
+        renderSuggestionsPage();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Approve";
+        alert("Couldn't approve: " + err.message);
+      }
+    });
+  });
+  document.querySelectorAll("[data-reject-dir-edit]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const p = DIRECTORY_EDIT_PROPOSALS.find((x) => x.id === btn.dataset.rejectDirEdit);
+      if (!p || !CURRENT_VIEWER) return;
+      const ok = confirm("Reject this proposed change?");
+      if (!ok) return;
+      btn.disabled = true;
+      btn.textContent = "Rejecting...";
+      try {
+        await API.rejectDirectoryEdit(p.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
         p.status = "rejected";
         p.decidedByLastName = CURRENT_VIEWER.lastName;
         p.decidedDate = eventStamp().fullDate;
@@ -2060,6 +2201,259 @@ function renderRun(id) {
   renderStep();
 }
 
+/* ============================== DIRECTORY ============================== */
+let directorySearchQuery = "";
+function renderDirectory() {
+  const q = directorySearchQuery.trim().toLowerCase();
+  const entries = DIRECTORY
+    .filter((p) => {
+      if (!q) return true;
+      const dept = getDepartment(p.department);
+      return [p.name, p.role, p.email, dept ? dept.name : ""].join(" ").toLowerCase().includes(q);
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const rows = entries.length
+    ? entries.map((p) => {
+        const dept = getDepartment(p.department);
+        const contactBits = [
+          p.email ? `<a href="mailto:${escapeAttr(p.email)}">${escapeHtml(p.email)}</a>` : "",
+          p.phone ? `<a href="tel:${escapeAttr(p.phone)}">${escapeHtml(p.phone)}</a>` : "",
+        ].filter(Boolean).join(" &middot; ");
+
+        let actionsHtml = "";
+        if (p.status === "draft") {
+          actionsHtml = isAdmin(CURRENT_VIEWER)
+            ? `<button class="btn btn-secondary" data-approve-person="${p.id}">Approve</button> <button class="btn btn-danger" data-remove-person="${p.id}">Remove</button>`
+            : `<span class="muted small">Awaiting Admin approval</span>`;
+        } else if (CURRENT_VIEWER) {
+          actionsHtml = `<button class="btn btn-secondary" data-edit-person="${p.id}">Edit</button>${isAdmin(CURRENT_VIEWER) ? ` <button class="btn btn-danger" data-remove-person="${p.id}">Remove</button>` : ""}`;
+        }
+
+        return `<div class="review-item">
+          <div class="suggestion-meta">
+            <span class="suggestion-dept">${escapeHtml(p.name)}</span>
+            ${p.status === "draft" ? `<span class="badge badge-draft">Pending</span>` : ""}
+          </div>
+          <div class="target">${escapeHtml(p.role)}${dept ? " &middot; " + dept.name : ""}</div>
+          ${contactBits ? `<p class="suggestion-text muted small">${contactBits}</p>` : ""}
+          ${p.notes ? `<p class="muted small">${escapeHtml(p.notes)}</p>` : ""}
+          <div class="review-footer">${actionsHtml}</div>
+        </div>`;
+      }).join("")
+    : `<div class="empty-state">${q ? "No one matches your search." : "No one in the directory yet."}</div>`;
+
+  pageBody.innerHTML = `
+    <div class="library-header">
+      <h1>Directory</h1>
+      <div class="row" style="gap:10px">
+        <input id="directory-search" class="ef-input" placeholder="Search name, role, department..." value="${escapeAttr(directorySearchQuery)}" style="max-width:240px">
+        ${CURRENT_VIEWER
+          ? `<button class="btn btn-secondary" id="add-person-btn">+ Add person</button>`
+          : `<button class="btn btn-secondary" id="add-person-btn" disabled title="Log in to add a person">+ Add person</button>`}
+      </div>
+    </div>
+    <div id="directory-list">${rows}</div>`;
+
+  document.getElementById("directory-search").addEventListener("input", (e) => {
+    directorySearchQuery = e.target.value;
+    renderDirectory();
+  });
+  const addBtn = document.getElementById("add-person-btn");
+  if (addBtn && !addBtn.disabled) addBtn.addEventListener("click", () => go("/directory/new"));
+  document.querySelectorAll("[data-edit-person]").forEach((el) => el.addEventListener("click", () => go("/directory/edit/" + el.dataset.editPerson)));
+  document.querySelectorAll("[data-approve-person]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!CURRENT_VIEWER) return;
+      btn.disabled = true;
+      btn.textContent = "Approving...";
+      try {
+        await API.approveDirectoryEntry(btn.dataset.approvePerson, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        const p = DIRECTORY.find((x) => x.id === btn.dataset.approvePerson);
+        if (p) p.status = "current";
+        renderDirectory();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Approve";
+        alert("Couldn't approve: " + err.message);
+      }
+    });
+  });
+  document.querySelectorAll("[data-remove-person]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!CURRENT_VIEWER) return;
+      const ok = confirm("Remove this person from the directory?");
+      if (!ok) return;
+      btn.disabled = true;
+      btn.textContent = "Removing...";
+      try {
+        await API.disapproveDirectoryEntry(btn.dataset.removePerson, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        DIRECTORY = DIRECTORY.filter((x) => x.id !== btn.dataset.removePerson);
+        renderDirectory();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Remove";
+        alert("Couldn't remove: " + err.message);
+      }
+    });
+  });
+}
+
+function renderDirectoryNew() {
+  if (!CURRENT_VIEWER) {
+    pageBody.innerHTML = `<div class="empty-state">
+      <p>Log in to add a person to the directory.</p>
+      <button class="btn btn-secondary" id="new-person-pick-viewer">Log in</button>
+      <div style="margin-top:12px"><button class="btn btn-secondary" id="back-dir1">Back to the directory</button></div>
+    </div>`;
+    document.getElementById("new-person-pick-viewer").addEventListener("click", (e) => { e.stopPropagation(); openViewerMenu(); });
+    document.getElementById("back-dir1").addEventListener("click", () => go("/directory"));
+    return;
+  }
+
+  const deptOptions = DEPARTMENTS.map((d) => `<option value="${d.id}">${d.name}</option>`).join("");
+
+  pageBody.innerHTML = `
+    <div class="breadcrumb">
+      <a id="crumb-dir1">Directory</a><span class="sep">/</span>
+      <span>New person</span>
+    </div>
+    <h1 style="margin-bottom:6px">Add a person</h1>
+    <p class="muted small" style="margin-bottom:20px">Adding as ${escapeHtml(CURRENT_VIEWER.lastName)} (${CURRENT_VIEWER.name}) &middot; starts as pending until an Admin approves.</p>
+
+    <div class="edit-field"><label>Name</label><input id="ef-person-name" class="ef-input" placeholder="e.g. Jordan Lee"></div>
+    <div class="edit-field"><label>Role</label><input id="ef-person-role" class="ef-input" placeholder="e.g. Warehouse Lead"></div>
+    <div class="edit-field"><label>Department</label>
+      <select id="ef-person-department" class="ef-input">
+        <option value="">Choose a department&hellip;</option>
+        ${deptOptions}
+      </select>
+    </div>
+    <div class="edit-field"><label>Email <span class="muted small">(optional)</span></label><input id="ef-person-email" class="ef-input" placeholder="name@amanandhiscave.com"></div>
+    <div class="edit-field"><label>Phone <span class="muted small">(optional)</span></label><input id="ef-person-phone" class="ef-input" placeholder="e.g. (555) 555-0100"></div>
+    <div class="edit-field"><label>Notes <span class="muted small">(optional)</span></label><input id="ef-person-notes" class="ef-input" placeholder="e.g. Out on Fridays"></div>
+
+    <div class="edit-actions">
+      <button class="btn btn-secondary" id="edit-cancel">Cancel</button>
+      <button class="btn btn-primary" id="edit-save">Save</button>
+    </div>
+    <p class="muted small" id="edit-status" style="min-height:16px;margin-top:8px"></p>`;
+
+  document.getElementById("crumb-dir1").addEventListener("click", () => go("/directory"));
+  document.getElementById("edit-cancel").addEventListener("click", () => go("/directory"));
+
+  document.getElementById("edit-save").addEventListener("click", async () => {
+    const saveBtn = document.getElementById("edit-save");
+    const statusEl = document.getElementById("edit-status");
+
+    const name = document.getElementById("ef-person-name").value.trim();
+    if (!name) { statusEl.textContent = "Name can't be empty."; return; }
+    const role = document.getElementById("ef-person-role").value.trim();
+    if (!role) { statusEl.textContent = "Role can't be empty."; return; }
+    const department = document.getElementById("ef-person-department").value;
+    if (!department) { statusEl.textContent = "Choose a department."; return; }
+    const email = document.getElementById("ef-person-email").value.trim();
+    const phone = document.getElementById("ef-person-phone").value.trim();
+    const notes = document.getElementById("ef-person-notes").value.trim();
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving...";
+    try {
+      const newId = await API.addDirectoryEntry(CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, { name, role, department, email, phone, notes });
+      DIRECTORY.push({ id: newId, name, role, department, email, phone, notes, status: "draft" });
+      go("/directory");
+    } catch (err) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Save";
+      statusEl.textContent = "Couldn't save: " + err.message;
+    }
+  });
+}
+
+function renderDirectoryEdit(id) {
+  const p = DIRECTORY.find((x) => x.id === id);
+  if (!p) {
+    pageBody.innerHTML = `<p class="muted">Person not found. <a id="back-dir2" style="text-decoration:underline;cursor:pointer">Back to the directory</a>.</p>`;
+    document.getElementById("back-dir2").addEventListener("click", () => go("/directory"));
+    return;
+  }
+  if (!CURRENT_VIEWER) {
+    pageBody.innerHTML = `<div class="empty-state">
+      <p>Log in to edit this person.</p>
+      <button class="btn btn-secondary" id="back-dir3">Back to the directory</button>
+    </div>`;
+    document.getElementById("back-dir3").addEventListener("click", () => go("/directory"));
+    return;
+  }
+
+  const memberProposing = !isAdmin(CURRENT_VIEWER);
+  const deptOptions = DEPARTMENTS.map((d) => `<option value="${d.id}" ${d.id === p.department ? "selected" : ""}>${d.name}</option>`).join("");
+
+  pageBody.innerHTML = `
+    <div class="breadcrumb">
+      <a id="crumb-dir4">Directory</a><span class="sep">/</span>
+      <span>Edit</span>
+    </div>
+    <h1 style="margin-bottom:6px">Edit person</h1>
+    ${memberProposing ? `<p class="muted small" style="margin-bottom:14px">Your changes will be submitted as a proposal &mdash; an Admin needs to approve them before they go live.</p>` : ""}
+
+    <div class="edit-field"><label>Name</label><input id="ef-person-name" class="ef-input" value="${escapeAttr(p.name)}"></div>
+    <div class="edit-field"><label>Role</label><input id="ef-person-role" class="ef-input" value="${escapeAttr(p.role)}"></div>
+    <div class="edit-field"><label>Department</label>
+      <select id="ef-person-department" class="ef-input">${deptOptions}</select>
+    </div>
+    <div class="edit-field"><label>Email <span class="muted small">(optional)</span></label><input id="ef-person-email" class="ef-input" value="${escapeAttr(p.email)}"></div>
+    <div class="edit-field"><label>Phone <span class="muted small">(optional)</span></label><input id="ef-person-phone" class="ef-input" value="${escapeAttr(p.phone)}"></div>
+    <div class="edit-field"><label>Notes <span class="muted small">(optional)</span></label><input id="ef-person-notes" class="ef-input" value="${escapeAttr(p.notes)}"></div>
+
+    <div class="edit-actions">
+      <button class="btn btn-secondary" id="edit-cancel">Cancel</button>
+      <button class="btn btn-primary" id="edit-save">${memberProposing ? "Submit for approval" : "Save changes"}</button>
+    </div>
+    <p class="muted small" id="edit-status" style="min-height:16px;margin-top:8px"></p>`;
+
+  document.getElementById("crumb-dir4").addEventListener("click", () => go("/directory"));
+  document.getElementById("edit-cancel").addEventListener("click", () => go("/directory"));
+
+  document.getElementById("edit-save").addEventListener("click", async () => {
+    const saveBtn = document.getElementById("edit-save");
+    const statusEl = document.getElementById("edit-status");
+
+    const name = document.getElementById("ef-person-name").value.trim();
+    if (!name) { statusEl.textContent = "Name can't be empty."; return; }
+    const role = document.getElementById("ef-person-role").value.trim();
+    if (!role) { statusEl.textContent = "Role can't be empty."; return; }
+    const fields = {
+      name, role,
+      department: document.getElementById("ef-person-department").value,
+      email: document.getElementById("ef-person-email").value.trim(),
+      phone: document.getElementById("ef-person-phone").value.trim(),
+      notes: document.getElementById("ef-person-notes").value.trim(),
+    };
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = memberProposing ? "Submitting..." : "Saving...";
+    try {
+      if (memberProposing) {
+        const proposalId = await API.proposeDirectoryEdit(p.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, fields);
+        DIRECTORY_EDIT_PROPOSALS.push({
+          id: proposalId, entryId: p.id, loginId: CURRENT_VIEWER.id, loginName: CURRENT_VIEWER.name,
+          lastName: CURRENT_VIEWER.lastName, fields, status: "pending", ts: Date.now(),
+        });
+        go("/directory");
+      } else {
+        await API.editDirectoryEntry(p.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, fields);
+        Object.assign(p, fields);
+        go("/directory");
+      }
+    } catch (err) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = memberProposing ? "Submit for approval" : "Save changes";
+      statusEl.textContent = "Couldn't save: " + err.message;
+    }
+  });
+}
+
 /* ============================== BOOT ============================== */
 function mapSop(row) {
   return {
@@ -2122,6 +2516,27 @@ function mapEditProposal(row) {
     ts: row.ts,
   };
 }
+function mapDirectoryEntry(row) {
+  return {
+    id: row.id, name: row.name, role: row.role, department: row.department,
+    email: row.email || "", phone: row.phone || "", notes: row.notes || "",
+    status: row.status,
+  };
+}
+function mapDirectoryProposal(row) {
+  return {
+    id: row.id,
+    entryId: row.entry_id,
+    loginId: row.login_id,
+    loginName: loginLabel(row.login_id),
+    lastName: row.last_name,
+    fields: row.fields || {},
+    status: row.status,
+    decidedByLastName: row.decided_by_last_name || undefined,
+    decidedDate: row.decided_date || undefined,
+    ts: row.ts,
+  };
+}
 
 async function boot() {
   if (!API.configured()) {
@@ -2134,13 +2549,16 @@ async function boot() {
   }
   pageBody.innerHTML = `<div class="empty-state"><p class="muted">Loading the handbook...</p></div>`;
   try {
-    const [sopsRows, eventRows, suggestionRows, proposalRows] = await Promise.all([
+    const [sopsRows, eventRows, suggestionRows, proposalRows, directoryRows, directoryProposalRows] = await Promise.all([
       API.listSops(), API.listSopEvents(), API.listSuggestions(), API.listSopEditProposals(),
+      API.listDirectory(), API.listDirectoryEditProposals(),
     ]);
     SOPS = sopsRows.map(mapSop);
     EVENTS = eventRows.map(mapEvent);
     SUGGESTIONS = suggestionRows.map(mapSuggestion);
     EDIT_PROPOSALS = proposalRows.map(mapEditProposal);
+    DIRECTORY = directoryRows.map(mapDirectoryEntry);
+    DIRECTORY_EDIT_PROPOSALS = directoryProposalRows.map(mapDirectoryProposal);
     render();
   } catch (err) {
     pageBody.innerHTML = `<div class="empty-state">
