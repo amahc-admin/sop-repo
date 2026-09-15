@@ -339,12 +339,20 @@
      connected to its manager with a simple CSS line, no chart library. */
   .org-tree, .org-branch { list-style: none; margin: 0; padding: 0; }
   .org-tree { padding-bottom: 8px; }
-  .org-tree li { padding: 6px 0; }
-  .org-branch { margin: 6px 0 6px 20px; padding-left: 24px; border-left: 2px solid var(--border); }
+  .org-tree li { padding: 10px 0; }
+  .org-branch { margin: 10px 0 10px 28px; padding-left: 24px; border-left: 2px solid var(--border); }
   .org-branch > li { position: relative; }
-  .org-branch > li::before { content: ""; position: absolute; left: -24px; top: 22px; width: 24px; height: 2px; background: var(--border); }
-  .org-card { display: inline-flex; flex-direction: column; gap: 2px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 14px; min-width: 200px; max-width: 320px; }
+  .org-branch > li::before { content: ""; position: absolute; left: -24px; top: 28px; width: 24px; height: 2px; background: var(--border); }
+  .org-card { display: inline-flex; flex-direction: column; gap: 2px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 14px; min-width: 200px; max-width: 320px; text-align: left; }
   .org-card .org-name { font: 700 14px Barlow, sans-serif; color: var(--text-primary); }
+
+  /* Each node is just a circular photo (initials if none) -- hovering
+     or tapping it reveals an .org-card with the full details. */
+  .person-node { position: relative; display: inline-block; }
+  .person-avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--card-bg); border: 2px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font: 700 16px Barlow, sans-serif; color: var(--text-secondary); overflow: hidden; cursor: pointer; }
+  .person-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .person-tooltip { display: none; position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 30; }
+  .person-node:hover .person-tooltip, .person-node.open .person-tooltip { display: block; }
 
   /* ---- SOP edit form ---- */
   .edit-field { margin-bottom: 20px; max-width: 720px; }
@@ -775,6 +783,11 @@ document.addEventListener("click", (e) => {
   const panel = document.getElementById("history-panel");
   const actions = document.querySelector(".sop-actions");
   if (panel && panel.classList.contains("open") && actions && !actions.contains(e.target)) panel.classList.remove("open");
+});
+// Closes an open Directory org-chart tooltip (tapped open for touch
+// screens, since they have no :hover) on any click outside it.
+document.addEventListener("click", () => {
+  document.querySelectorAll(".person-node.open").forEach((o) => o.classList.remove("open"));
 });
 
 /* ============================== ROUTER ============================== */
@@ -1374,7 +1387,7 @@ function wireEditProposalsSection() {
 }
 
 /* ==================== PENDING DIRECTORY EDITS (Member proposals) ========= */
-const DIRECTORY_FIELD_LABELS = { name: "Name", role: "Role", department: "Department", email: "Email", phone: "Phone", notes: "Notes", reports_to: "Reports to" };
+const DIRECTORY_FIELD_LABELS = { name: "Name", role: "Role", department: "Department", email: "Email", phone: "Phone", notes: "Notes", reports_to: "Reports to", photo_url: "Photo" };
 function personName(id) {
   const p = DIRECTORY.find((x) => x.id === id);
   return p ? p.name : null;
@@ -1383,12 +1396,13 @@ function diffDirectoryProposalFields(entry, fields) {
   const out = [];
   Object.keys(fields || {}).forEach((key) => {
     if (!(key in DIRECTORY_FIELD_LABELS)) return;
-    const oldVal = entry ? (key === "reports_to" ? entry.reportsTo : entry[key]) : undefined;
+    const oldVal = entry ? (key === "reports_to" ? entry.reportsTo : key === "photo_url" ? entry.photoUrl : entry[key]) : undefined;
     const newVal = fields[key];
     if ((oldVal || "") === (newVal || "")) return;
     const display = (v) => {
       if (key === "department") return (getDepartment(v) || {}).name || v || "(none)";
       if (key === "reports_to") return v ? (personName(v) || v) : "(none)";
+      if (key === "photo_url") return v ? "(photo)" : "(no photo)";
       return v || "(empty)";
     };
     out.push({ key, label: DIRECTORY_FIELD_LABELS[key], oldVal: display(oldVal), newVal: display(newVal) });
@@ -1485,6 +1499,7 @@ function wireDirectoryProposalsSection() {
           if ("phone" in f) entry.phone = f.phone;
           if ("notes" in f) entry.notes = f.notes;
           if ("reports_to" in f) entry.reportsTo = f.reports_to || null;
+          if ("photo_url" in f) entry.photoUrl = f.photo_url || "";
         }
         renderSuggestionsPage();
       } catch (err) {
@@ -2242,6 +2257,29 @@ function directoryManagerOptions(excludeId, selectedId) {
     .join("");
 }
 
+// Shared file-picker + live preview for the Add/Edit person forms.
+// Actual upload happens on save (see wireDirectoryEdit/New's save
+// handler), not on file selection.
+function photoFieldHtml(currentUrl) {
+  return `<div class="edit-field"><label>Photo <span class="muted small">(optional)</span></label>
+    <div class="row" style="gap:12px;align-items:center">
+      <div class="person-avatar" id="ef-photo-preview" style="width:56px;height:56px">${currentUrl ? `<img src="${escapeAttr(currentUrl)}" alt="">` : ""}</div>
+      <input type="file" id="ef-person-photo" accept="image/*">
+    </div>
+  </div>`;
+}
+function wirePhotoField() {
+  const input = document.getElementById("ef-person-photo");
+  const preview = document.getElementById("ef-photo-preview");
+  input.addEventListener("change", () => {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { preview.innerHTML = `<img src="${reader.result}" alt="">`; };
+    reader.readAsDataURL(file);
+  });
+}
+
 // Builds the org-chart shape from reportsTo pointers: a map of managerId
 // -> their direct reports, plus the list of "roots" to start rendering
 // from (no manager, or a manager that no longer exists). A person whose
@@ -2285,6 +2323,11 @@ function directoryActionsHtml(p) {
   return "";
 }
 
+// A tree node shows just a circular photo (or initials if none) --
+// hovering it (or tapping it, for touch screens with no hover) reveals
+// the full details in a popover. The popover is a descendant of the
+// same element the CSS :hover rule watches, so moving the pointer into
+// it to click Edit/Approve/Remove doesn't dismiss it.
 function renderOrgNode(p, childrenOf) {
   const dept = getDepartment(p.department);
   const kids = childrenOf.get(p.id) || [];
@@ -2292,13 +2335,19 @@ function renderOrgNode(p, childrenOf) {
     p.email ? `<a href="mailto:${escapeAttr(p.email)}">${escapeHtml(p.email)}</a>` : "",
     p.phone ? `<a href="tel:${escapeAttr(p.phone)}">${escapeHtml(p.phone)}</a>` : "",
   ].filter(Boolean).join(" &middot; ");
+  const avatarInner = p.photoUrl ? `<img src="${escapeAttr(p.photoUrl)}" alt="${escapeAttr(p.name)}">` : escapeHtml(initialsFrom(p.name));
   return `<li>
-    <div class="org-card">
-      <div class="org-name">${escapeHtml(p.name)} ${p.status === "draft" ? `<span class="badge badge-draft">Pending</span>` : ""}</div>
-      <div class="muted small">${escapeHtml(p.role)}${dept ? " &middot; " + dept.name : ""}</div>
-      ${contactBits ? `<div class="muted small">${contactBits}</div>` : ""}
-      ${p.notes ? `<div class="muted small">${escapeHtml(p.notes)}</div>` : ""}
-      <div class="row" style="gap:8px;margin-top:6px">${directoryActionsHtml(p)}</div>
+    <div class="person-node" data-person-node="${p.id}">
+      <div class="person-avatar">${avatarInner}</div>
+      <div class="person-tooltip">
+        <div class="org-card">
+          <div class="org-name">${escapeHtml(p.name)} ${p.status === "draft" ? `<span class="badge badge-draft">Pending</span>` : ""}</div>
+          <div class="muted small">${escapeHtml(p.role)}${dept ? " &middot; " + dept.name : ""}</div>
+          ${contactBits ? `<div class="muted small">${contactBits}</div>` : ""}
+          ${p.notes ? `<div class="muted small">${escapeHtml(p.notes)}</div>` : ""}
+          <div class="row" style="gap:8px;margin-top:6px">${directoryActionsHtml(p)}</div>
+        </div>
+      </div>
     </div>
     ${kids.length ? `<ul class="org-branch">${kids.map((c) => renderOrgNode(c, childrenOf)).join("")}</ul>` : ""}
   </li>`;
@@ -2323,10 +2372,14 @@ function renderDirectory() {
             p.email ? `<a href="mailto:${escapeAttr(p.email)}">${escapeHtml(p.email)}</a>` : "",
             p.phone ? `<a href="tel:${escapeAttr(p.phone)}">${escapeHtml(p.phone)}</a>` : "",
           ].filter(Boolean).join(" &middot; ");
+          const avatarInner = p.photoUrl ? `<img src="${escapeAttr(p.photoUrl)}" alt="${escapeAttr(p.name)}">` : escapeHtml(initialsFrom(p.name));
           return `<div class="review-item">
-            <div class="suggestion-meta">
-              <span class="suggestion-dept">${escapeHtml(p.name)}</span>
-              ${p.status === "draft" ? `<span class="badge badge-draft">Pending</span>` : ""}
+            <div class="row" style="gap:10px;align-items:center">
+              <div class="person-avatar" style="width:36px;height:36px;font-size:12px;flex:none">${avatarInner}</div>
+              <div class="suggestion-meta">
+                <span class="suggestion-dept">${escapeHtml(p.name)}</span>
+                ${p.status === "draft" ? `<span class="badge badge-draft">Pending</span>` : ""}
+              </div>
             </div>
             <div class="target">${escapeHtml(p.role)}${dept ? " &middot; " + dept.name : ""}</div>
             ${contactBits ? `<p class="suggestion-text muted small">${contactBits}</p>` : ""}
@@ -2396,6 +2449,18 @@ function renderDirectory() {
       }
     });
   });
+
+  // Tapping an avatar toggles its tooltip (touch screens have no
+  // :hover); see the single document-level listener near the top of
+  // this script that closes whichever one is open on an outside click.
+  document.querySelectorAll("[data-person-node]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const wasOpen = el.classList.contains("open");
+      document.querySelectorAll(".person-node.open").forEach((o) => o.classList.remove("open"));
+      if (!wasOpen) el.classList.add("open");
+    });
+  });
 }
 
 function renderDirectoryNew() {
@@ -2434,6 +2499,7 @@ function renderDirectoryNew() {
         ${directoryManagerOptions(null, null)}
       </select>
     </div>
+    ${photoFieldHtml("")}
     <div class="edit-field"><label>Email <span class="muted small">(optional)</span></label><input id="ef-person-email" class="ef-input" placeholder="name@amanandhiscave.com"></div>
     <div class="edit-field"><label>Phone <span class="muted small">(optional)</span></label><input id="ef-person-phone" class="ef-input" placeholder="e.g. (555) 555-0100"></div>
     <div class="edit-field"><label>Notes <span class="muted small">(optional)</span></label><input id="ef-person-notes" class="ef-input" placeholder="e.g. Out on Fridays"></div>
@@ -2446,6 +2512,7 @@ function renderDirectoryNew() {
 
   document.getElementById("crumb-dir1").addEventListener("click", () => go("/directory"));
   document.getElementById("edit-cancel").addEventListener("click", () => go("/directory"));
+  wirePhotoField();
 
   document.getElementById("edit-save").addEventListener("click", async () => {
     const saveBtn = document.getElementById("edit-save");
@@ -2461,12 +2528,19 @@ function renderDirectoryNew() {
     const email = document.getElementById("ef-person-email").value.trim();
     const phone = document.getElementById("ef-person-phone").value.trim();
     const notes = document.getElementById("ef-person-notes").value.trim();
+    const photoFile = document.getElementById("ef-person-photo").files[0];
 
     saveBtn.disabled = true;
     saveBtn.textContent = "Saving...";
     try {
-      const newId = await API.addDirectoryEntry(CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, { name, role, department, email, phone, notes, reports_to: reportsTo });
-      DIRECTORY.push({ id: newId, name, role, department, email, phone, notes, reportsTo: reportsTo || null, status: "draft" });
+      let photoUrl = "";
+      if (photoFile) {
+        saveBtn.textContent = "Uploading photo...";
+        photoUrl = await API.uploadDirectoryPhoto(photoFile);
+        saveBtn.textContent = "Saving...";
+      }
+      const newId = await API.addDirectoryEntry(CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, { name, role, department, email, phone, notes, reports_to: reportsTo, photo_url: photoUrl });
+      DIRECTORY.push({ id: newId, name, role, department, email, phone, notes, reportsTo: reportsTo || null, photoUrl, status: "draft" });
       go("/directory");
     } catch (err) {
       saveBtn.disabled = false;
@@ -2514,6 +2588,7 @@ function renderDirectoryEdit(id) {
         ${directoryManagerOptions(p.id, p.reportsTo)}
       </select>
     </div>
+    ${photoFieldHtml(p.photoUrl)}
     <div class="edit-field"><label>Email <span class="muted small">(optional)</span></label><input id="ef-person-email" class="ef-input" value="${escapeAttr(p.email)}"></div>
     <div class="edit-field"><label>Phone <span class="muted small">(optional)</span></label><input id="ef-person-phone" class="ef-input" value="${escapeAttr(p.phone)}"></div>
     <div class="edit-field"><label>Notes <span class="muted small">(optional)</span></label><input id="ef-person-notes" class="ef-input" value="${escapeAttr(p.notes)}"></div>
@@ -2526,6 +2601,7 @@ function renderDirectoryEdit(id) {
 
   document.getElementById("crumb-dir4").addEventListener("click", () => go("/directory"));
   document.getElementById("edit-cancel").addEventListener("click", () => go("/directory"));
+  wirePhotoField();
 
   document.getElementById("edit-save").addEventListener("click", async () => {
     const saveBtn = document.getElementById("edit-save");
@@ -2536,6 +2612,7 @@ function renderDirectoryEdit(id) {
     const role = document.getElementById("ef-person-role").value.trim();
     if (!role) { statusEl.textContent = "Role can't be empty."; return; }
     const reportsTo = document.getElementById("ef-person-reports-to").value;
+    const photoFile = document.getElementById("ef-person-photo").files[0];
     const fields = {
       name, role,
       department: document.getElementById("ef-person-department").value,
@@ -2543,11 +2620,17 @@ function renderDirectoryEdit(id) {
       phone: document.getElementById("ef-person-phone").value.trim(),
       notes: document.getElementById("ef-person-notes").value.trim(),
       reports_to: reportsTo,
+      photo_url: p.photoUrl || "",
     };
 
     saveBtn.disabled = true;
     saveBtn.textContent = memberProposing ? "Submitting..." : "Saving...";
     try {
+      if (photoFile) {
+        saveBtn.textContent = "Uploading photo...";
+        fields.photo_url = await API.uploadDirectoryPhoto(photoFile);
+        saveBtn.textContent = memberProposing ? "Submitting..." : "Saving...";
+      }
       if (memberProposing) {
         const proposalId = await API.proposeDirectoryEdit(p.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, fields);
         DIRECTORY_EDIT_PROPOSALS.push({
@@ -2561,6 +2644,7 @@ function renderDirectoryEdit(id) {
           name: fields.name, role: fields.role, department: fields.department,
           email: fields.email, phone: fields.phone, notes: fields.notes,
           reportsTo: fields.reports_to || null,
+          photoUrl: fields.photo_url || "",
         });
         go("/directory");
       }
@@ -2639,6 +2723,7 @@ function mapDirectoryEntry(row) {
     id: row.id, name: row.name, role: row.role, department: row.department,
     email: row.email || "", phone: row.phone || "", notes: row.notes || "",
     reportsTo: row.reports_to || null,
+    photoUrl: row.photo_url || "",
     status: row.status,
   };
 }

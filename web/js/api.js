@@ -35,6 +35,33 @@ const API = (() => {
     return rest("rpc/" + fn, { method: "POST", body: JSON.stringify(args) });
   }
 
+  // Uploads straight to Supabase Storage (bucket set up in
+  // supabase/migrations/0007_directory_photos.sql) and returns the
+  // public URL. Not passcode-gated -- see that migration's notes on why
+  // that matches this app's existing security model.
+  async function uploadPublicFile(bucket, file) {
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+    const path = Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
+    const res = await fetch(BASE + "/storage/v1/object/" + bucket + "/" + path, {
+      method: "POST",
+      headers: {
+        apikey: KEY,
+        Authorization: "Bearer " + KEY,
+        "Content-Type": file.type || "application/octet-stream",
+      },
+      body: file,
+    });
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const body = await res.json();
+        message = body.message || body.error || message;
+      } catch (e) {}
+      throw new Error(message);
+    }
+    return BASE + "/storage/v1/object/public/" + bucket + "/" + path;
+  }
+
   return {
     configured() {
       return !!(BASE && KEY) && !BASE.includes("YOUR-PROJECT-REF");
@@ -103,6 +130,9 @@ const API = (() => {
     },
     rejectDirectoryEdit(proposalId, loginId, passcode, lastName) {
       return rpc("reject_directory_edit", { p_proposal_id: proposalId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
+    },
+    uploadDirectoryPhoto(file) {
+      return uploadPublicFile("directory-photos", file);
     },
   };
 })();
