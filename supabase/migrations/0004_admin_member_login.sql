@@ -28,9 +28,11 @@ create policy "logins are publicly readable (id/name/code only)"
 -- passcode_hash and can_manage_sops are never exposed to anon/authenticated:
 -- see the column-scoped grant near the bottom of this file.
 
+-- Temporary passcodes -- change these for real right after running this
+-- migration (see the follow-up "set real passcodes" statement).
 insert into logins (id, name, code, passcode_hash, can_manage_sops) values
-  ('admin', 'Admin', 'ADM', crypt('AMAHCAdmin77!', gen_salt('bf')), true),
-  ('member', 'Member', 'MEM', crypt('AMAHCTeam77!', gen_salt('bf')), false);
+  ('admin', 'Admin', 'ADM', crypt('changeme-admin', gen_salt('bf')), true),
+  ('member', 'Member', 'MEM', crypt('changeme-member', gen_salt('bf')), false);
 
 -- departments is now a plain lookup of SOP category tags -- drop the
 -- login-only columns and the general-employee row that lived here.
