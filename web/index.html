@@ -470,19 +470,26 @@ const STATUSES = [
 ];
 
 const DEPT_CODES = { operations: "OPS", sales: "SAL", cx: "CX", installations: "INS", marketing: "MKT", accounts: "ACC", exec: "EXA" };
-// General Employees is a login option, not a real SOP-owning department --
-// it never appears in DEPARTMENTS (so it's absent from Library filters,
-// Home's dept tiles, and Team health), but it IS a valid thing to log in
-// as (VIEWER_DEPTS), and it can submit suggestions. It just can't
-// approve/edit/add/disapprove a SOP -- see MANAGE_SOPS_IDS and the
-// matching can_manage_sops column/checks in the database.
-const GENERAL_EMPLOYEE_DEPT = { id: "general", name: "AMAHC Member", code: "GEN" };
-const VIEWER_DEPTS = [GENERAL_EMPLOYEE_DEPT, ...DEPARTMENTS.map((d) => ({ id: d.id, name: d.name, code: DEPT_CODES[d.id] }))];
-const MANAGE_SOPS_IDS = new Set(DEPARTMENTS.map((d) => d.id));
-// CURRENT_VIEWER also carries a `passcode` field -- the shared department
-// passcode, cached in this browser so writes don't ask for it every time.
-// It never leaves the browser except as an argument to the passcode-gated
-// RPC calls in api.js, each of which re-verifies it server-side.
+// There are only 2 shared logins now: Admin (full management rights) and
+// Member (can view, suggest, and add a new SOP, but an edit to an
+// EXISTING SOP goes in as a pending proposal an Admin must approve --
+// see proposeSopEdit/approveSopEdit/rejectSopEdit). DEPARTMENTS above is
+// now purely a categorization tag on a SOP (which team it belongs to),
+// unrelated to who's logged in.
+const LOGINS = [
+  { id: "admin", name: "Admin", code: "ADM" },
+  { id: "member", name: "Member", code: "MEM" },
+];
+function isAdmin(viewer) {
+  return !!viewer && viewer.id === "admin";
+}
+// CURRENT_VIEWER also carries `passcode` and `lastName` fields -- the
+// shared login passcode and the person's own last name (for attribution
+// only, not auth), both cached in this browser so writes don't ask for
+// them every time. Neither ever leaves the browser except as arguments to
+// the passcode-gated RPC calls in api.js, each of which re-verifies the
+// passcode server-side; the last name is never itself verified, only
+// recorded.
 function getViewer() {
   try {
     const raw = localStorage.getItem("cave-handbook-viewer");
@@ -507,6 +514,9 @@ function escapeHtml(str) {
 function escapeAttr(str) {
   return escapeHtml(str || "").replace(/"/g, "&quot;");
 }
+function initialsFrom(name) {
+  return (name || "").split(/\s+/).filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 3) || "NA";
+}
 function suggestionsFor(sopId) {
   return SUGGESTIONS.filter((s) => s.sopId === sopId).sort((a, b) => b.ts - a.ts);
 }
@@ -518,7 +528,7 @@ function suggestionsSectionHtml(sop) {
   const items = list.length
     ? list.map((s) => `
       <div class="suggestion-item">
-        <div class="suggestion-meta"><span class="suggestion-dept">${s.deptName}</span><span class="suggestion-status suggestion-status-${suggestionStatus(s)}">${suggestionStatus(s) === "approved" ? "Approved" : "Pending"}</span><span class="suggestion-date">${new Date(s.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span></div>
+        <div class="suggestion-meta"><span class="suggestion-dept">${escapeHtml(s.lastName)} (${s.loginName})</span><span class="suggestion-status suggestion-status-${suggestionStatus(s)}">${suggestionStatus(s) === "approved" ? "Approved" : "Pending"}</span><span class="suggestion-date">${new Date(s.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span></div>
         <p class="suggestion-text">${escapeHtml(s.text)}</p>
       </div>`).join("")
     : `<p class="muted small">No suggestions yet. Be the first to flag an improvement.</p>`;
@@ -526,14 +536,14 @@ function suggestionsSectionHtml(sop) {
     ? `<div class="suggestion-form">
         <textarea id="suggestion-input" rows="3" placeholder="Suggest an improvement to this SOP..."></textarea>
         <div class="suggestion-form-row">
-          <span class="muted small">Posting as <strong>${CURRENT_VIEWER.name}</strong></span>
+          <span class="muted small">Posting as <strong>${escapeHtml(CURRENT_VIEWER.lastName)}</strong> (${CURRENT_VIEWER.name})</span>
           <button class="btn btn-primary" id="suggestion-submit">Send suggestion</button>
         </div>
         <p class="muted small" id="suggestion-status" style="min-height:16px"></p>
       </div>`
     : `<div class="suggestion-form suggestion-form-locked">
-        <p class="muted small">Pick your department to leave a suggestion.</p>
-        <button class="btn btn-secondary" id="suggestion-pick-viewer">Which department?</button>
+        <p class="muted small">Log in to leave a suggestion.</p>
+        <button class="btn btn-secondary" id="suggestion-pick-viewer">Log in</button>
       </div>`;
   return `<div class="section" id="section-suggestions">
     <h2>Suggestions &amp; feedback</h2>
@@ -555,12 +565,12 @@ function wireSuggestionsSection(sop) {
     submitBtn.disabled = true;
     status.textContent = "Sending...";
     try {
-      const id = await API.addSuggestion(sop.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, text);
-      SUGGESTIONS.push({ id, sopId: sop.id, deptId: CURRENT_VIEWER.id, deptName: CURRENT_VIEWER.name, text, ts: Date.now(), status: "pending" });
+      const id = await API.addSuggestion(sop.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, text);
+      SUGGESTIONS.push({ id, sopId: sop.id, loginId: CURRENT_VIEWER.id, loginName: CURRENT_VIEWER.name, lastName: CURRENT_VIEWER.lastName, text, ts: Date.now(), status: "pending" });
       document.getElementById("suggestion-list").innerHTML = suggestionsFor(sop.id).length
         ? suggestionsFor(sop.id).map((s) => `
           <div class="suggestion-item">
-            <div class="suggestion-meta"><span class="suggestion-dept">${s.deptName}</span><span class="suggestion-status suggestion-status-${suggestionStatus(s)}">${suggestionStatus(s) === "approved" ? "Approved" : "Pending"}</span><span class="suggestion-date">${new Date(s.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span></div>
+            <div class="suggestion-meta"><span class="suggestion-dept">${escapeHtml(s.lastName)} (${s.loginName})</span><span class="suggestion-status suggestion-status-${suggestionStatus(s)}">${suggestionStatus(s) === "approved" ? "Approved" : "Pending"}</span><span class="suggestion-date">${new Date(s.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span></div>
             <p class="suggestion-text">${escapeHtml(s.text)}</p>
           </div>`).join("")
         : "";
@@ -629,18 +639,19 @@ document.getElementById("theme-toggle").addEventListener("click", () => {
 function updateViewerAvatar() {
   document.getElementById("viewer-btn").textContent = CURRENT_VIEWER ? CURRENT_VIEWER.code : "?";
 }
-// Picking a department doesn't log you in by itself -- it shows a passcode
-// field. login_department() re-verifies the passcode against the database
-// on every call; a wrong passcode never sets CURRENT_VIEWER.
-let pendingDeptId = null;
+// Picking Admin/Member doesn't log you in by itself -- it shows last-name
+// and passcode fields. login() re-verifies the passcode against the
+// database on every call; a wrong passcode never sets CURRENT_VIEWER.
+let pendingLoginId = null;
 function renderViewerMenu() {
   const menu = document.getElementById("viewer-menu");
-  const items = VIEWER_DEPTS.map((d) => {
-    const selected = CURRENT_VIEWER && CURRENT_VIEWER.id === d.id;
-    if (pendingDeptId === d.id) {
-      return `<div class="vm-item-login" data-dept="${d.id}">
-        <div class="vm-item selected"><span class="vm-dot">${d.code}</span><span>${d.name}</span></div>
-        <input type="password" class="vm-passcode-input" id="vm-passcode-input" placeholder="Department passcode" autocomplete="off">
+  const items = LOGINS.map((l) => {
+    const selected = CURRENT_VIEWER && CURRENT_VIEWER.id === l.id;
+    if (pendingLoginId === l.id) {
+      return `<div class="vm-item-login" data-login="${l.id}">
+        <div class="vm-item selected"><span class="vm-dot">${l.code}</span><span>${l.name}</span></div>
+        <input type="text" class="vm-passcode-input" id="vm-lastname-input" placeholder="Your last name" autocomplete="off">
+        <input type="password" class="vm-passcode-input" id="vm-passcode-input" placeholder="Passcode" autocomplete="off">
         <div class="row" style="gap:8px;margin-top:8px">
           <button class="btn btn-primary" id="vm-login-btn" style="flex:1">Log in</button>
           <button class="btn btn-secondary" id="vm-login-cancel">Cancel</button>
@@ -648,39 +659,42 @@ function renderViewerMenu() {
         <p class="muted small" id="vm-login-error" style="min-height:16px;margin-top:6px"></p>
       </div>`;
     }
-    return `<div class="vm-item ${selected ? "selected" : ""}" data-dept="${d.id}">
-      <span class="vm-dot">${d.code}</span><span>${d.name}</span>
+    return `<div class="vm-item ${selected ? "selected" : ""}" data-login="${l.id}">
+      <span class="vm-dot">${l.code}</span><span>${l.name}</span>
     </div>`;
   }).join("");
   menu.innerHTML = `
-    <div class="vm-label">Which department are you in?</div>
+    <div class="vm-label">Log in as</div>
     ${items}
     <div class="vm-clear"><div class="vm-item" id="vm-clear-item"><span class="vm-dot">?</span><span>Not sure / log out</span></div></div>`;
 
-  menu.querySelectorAll(".vm-item[data-dept]").forEach((el) => {
+  menu.querySelectorAll(".vm-item[data-login]").forEach((el) => {
     el.addEventListener("click", (e) => {
       e.stopPropagation();
-      pendingDeptId = el.dataset.dept;
+      pendingLoginId = el.dataset.login;
       renderViewerMenu();
-      const input = document.getElementById("vm-passcode-input");
+      const input = document.getElementById("vm-lastname-input");
       if (input) input.focus();
     });
   });
 
   const loginBtn = document.getElementById("vm-login-btn");
   if (loginBtn) {
+    const lastNameInput = document.getElementById("vm-lastname-input");
     const input = document.getElementById("vm-passcode-input");
     const errEl = document.getElementById("vm-login-error");
     const doLogin = async () => {
+      const lastName = lastNameInput.value.trim();
       const passcode = input.value;
+      if (!lastName) { errEl.textContent = "Enter your last name."; return; }
       if (!passcode) { errEl.textContent = "Enter the passcode."; return; }
       loginBtn.disabled = true;
       loginBtn.textContent = "Checking...";
       try {
-        const dept = await API.login(pendingDeptId, passcode);
-        CURRENT_VIEWER = { id: dept.id, name: dept.name, code: dept.code, passcode };
+        const login = await API.login(pendingLoginId, passcode);
+        CURRENT_VIEWER = { id: login.id, name: login.name, code: login.code, passcode, lastName };
         setViewer(CURRENT_VIEWER);
-        pendingDeptId = null;
+        pendingLoginId = null;
         updateViewerAvatar();
         closeViewerMenu();
         render();
@@ -692,10 +706,12 @@ function renderViewerMenu() {
     };
     loginBtn.addEventListener("click", (e) => { e.stopPropagation(); doLogin(); });
     input.addEventListener("click", (e) => e.stopPropagation());
+    lastNameInput.addEventListener("click", (e) => e.stopPropagation());
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+    lastNameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") input.focus(); });
     document.getElementById("vm-login-cancel").addEventListener("click", (e) => {
       e.stopPropagation();
-      pendingDeptId = null;
+      pendingLoginId = null;
       renderViewerMenu();
     });
   }
@@ -703,7 +719,7 @@ function renderViewerMenu() {
   document.getElementById("vm-clear-item").addEventListener("click", () => {
     CURRENT_VIEWER = null;
     setViewer(null);
-    pendingDeptId = null;
+    pendingLoginId = null;
     updateViewerAvatar();
     closeViewerMenu();
     render();
@@ -717,7 +733,7 @@ function openViewerMenu() {
 function closeViewerMenu() {
   document.getElementById("viewer-menu").classList.remove("open");
   document.getElementById("viewer-btn").setAttribute("aria-expanded", "false");
-  pendingDeptId = null;
+  pendingLoginId = null;
 }
 updateViewerAvatar();
 document.getElementById("viewer-btn").addEventListener("click", (e) => {
@@ -799,22 +815,23 @@ globalSearch.addEventListener("input", (e) => {
   }
 });
 
-// Shown instead of any page content until a department logs in. Similar
+// Shown instead of any page content until someone logs in. Similar
 // reveal-a-passcode-field pattern to the topbar viewer menu, laid out as a
 // full page instead of a dropdown -- but with its OWN pending-selection
-// state (gatePendingDeptId), deliberately not shared with the topbar
-// menu's pendingDeptId. The gate lives inside #page-body, outside
+// state (gatePendingLoginId), deliberately not shared with the topbar
+// menu's pendingLoginId. The gate lives inside #page-body, outside
 // .viewer-wrap, so any click on it also bubbles to the document-level
 // "close the topbar menu on outside click" listener; that listener resets
-// pendingDeptId as a side effect, which was clobbering this gate's
+// pendingLoginId as a side effect, which was clobbering this gate's
 // selection out from under it when the two shared one variable.
-let gatePendingDeptId = null;
+let gatePendingLoginId = null;
 function renderLoginGate() {
-  const items = VIEWER_DEPTS.map((d) => {
-    if (gatePendingDeptId === d.id) {
-      return `<div class="vm-item-login" data-dept="${d.id}">
-        <div class="vm-item selected"><span class="vm-dot">${d.code}</span><span>${d.name}</span></div>
-        <input type="password" class="vm-passcode-input" id="gate-passcode-input" placeholder="Department passcode" autocomplete="off">
+  const items = LOGINS.map((l) => {
+    if (gatePendingLoginId === l.id) {
+      return `<div class="vm-item-login" data-login="${l.id}">
+        <div class="vm-item selected"><span class="vm-dot">${l.code}</span><span>${l.name}</span></div>
+        <input type="text" class="vm-passcode-input" id="gate-lastname-input" placeholder="Your last name" autocomplete="off">
+        <input type="password" class="vm-passcode-input" id="gate-passcode-input" placeholder="Passcode" autocomplete="off">
         <div class="row" style="gap:8px;margin-top:8px">
           <button class="btn btn-primary" id="gate-login-btn" style="flex:1">Log in</button>
           <button class="btn btn-secondary" id="gate-login-cancel">Cancel</button>
@@ -822,41 +839,44 @@ function renderLoginGate() {
         <p class="muted small" id="gate-login-error" style="min-height:16px;margin-top:6px"></p>
       </div>`;
     }
-    return `<div class="vm-item" data-dept="${d.id}"><span class="vm-dot">${d.code}</span><span>${d.name}</span></div>`;
+    return `<div class="vm-item" data-login="${l.id}"><span class="vm-dot">${l.code}</span><span>${l.name}</span></div>`;
   }).join("");
 
   pageBody.innerHTML = `
     <div class="login-gate-wrap">
       <div class="brand-mark">&#127921;</div>
       <h1>Cave Handbook</h1>
-      <p class="muted">Pick your department and enter its passcode to continue.</p>
+      <p class="muted">Log in and enter your last name to continue.</p>
       <div class="login-gate">${items}</div>
     </div>`;
 
-  pageBody.querySelectorAll(".login-gate .vm-item[data-dept]").forEach((el) => {
+  pageBody.querySelectorAll(".login-gate .vm-item[data-login]").forEach((el) => {
     el.addEventListener("click", (e) => {
       e.stopPropagation();
-      gatePendingDeptId = el.dataset.dept;
+      gatePendingLoginId = el.dataset.login;
       renderLoginGate();
-      const input = document.getElementById("gate-passcode-input");
+      const input = document.getElementById("gate-lastname-input");
       if (input) input.focus();
     });
   });
 
   const loginBtn = document.getElementById("gate-login-btn");
   if (loginBtn) {
+    const lastNameInput = document.getElementById("gate-lastname-input");
     const input = document.getElementById("gate-passcode-input");
     const errEl = document.getElementById("gate-login-error");
     const doLogin = async () => {
+      const lastName = lastNameInput.value.trim();
       const passcode = input.value;
+      if (!lastName) { errEl.textContent = "Enter your last name."; return; }
       if (!passcode) { errEl.textContent = "Enter the passcode."; return; }
       loginBtn.disabled = true;
       loginBtn.textContent = "Checking...";
       try {
-        const dept = await API.login(gatePendingDeptId, passcode);
-        CURRENT_VIEWER = { id: dept.id, name: dept.name, code: dept.code, passcode };
+        const login = await API.login(gatePendingLoginId, passcode);
+        CURRENT_VIEWER = { id: login.id, name: login.name, code: login.code, passcode, lastName };
         setViewer(CURRENT_VIEWER);
-        gatePendingDeptId = null;
+        gatePendingLoginId = null;
         updateViewerAvatar();
         render();
       } catch (err) {
@@ -867,10 +887,12 @@ function renderLoginGate() {
     };
     loginBtn.addEventListener("click", (e) => { e.stopPropagation(); doLogin(); });
     input.addEventListener("click", (e) => e.stopPropagation());
+    lastNameInput.addEventListener("click", (e) => e.stopPropagation());
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+    lastNameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") input.focus(); });
     document.getElementById("gate-login-cancel").addEventListener("click", (e) => {
       e.stopPropagation();
-      gatePendingDeptId = null;
+      gatePendingLoginId = null;
       renderLoginGate();
     });
   }
@@ -937,9 +959,11 @@ function renderHome() {
 
   let waiting;
   if (!CURRENT_VIEWER) {
-    waiting = `<div class="waiting-cta"><p class="muted small">Set your department to see what needs attention there.</p><button class="btn btn-secondary" id="waiting-set-viewer">Which department?</button></div>`;
+    waiting = `<div class="waiting-cta"><p class="muted small">Log in to see what needs attention.</p><button class="btn btn-secondary" id="waiting-set-viewer">Log in</button></div>`;
+  } else if (!isAdmin(CURRENT_VIEWER)) {
+    waiting = `<p class="muted small">SOP approvals are handled by an Admin.</p>`;
   } else {
-    const mine = SOPS.filter((s) => s.department === CURRENT_VIEWER.id && (s.status === "overdue" || s.status === "review-due"));
+    const mine = SOPS.filter((s) => s.status === "overdue" || s.status === "review-due");
     waiting = mine.length
       ? mine.map((s) => {
           const label = s.status === "overdue" ? "Sign off" : "Review due";
@@ -949,7 +973,7 @@ function renderHome() {
             <a class="btn btn-secondary go" data-sop="${s.id}">Open</a>
           </div>`;
         }).join("")
-      : `<p class="muted small">Nothing needs attention in ${CURRENT_VIEWER.name} right now.</p>`;
+      : `<p class="muted small">Nothing needs attention right now.</p>`;
   }
 
   const health = DEPARTMENTS.map((d) => {
@@ -968,11 +992,11 @@ function renderHome() {
   pageBody.innerHTML = `
     <div class="dash-greeting">
       <h1>${word}.</h1>
-      <p class="muted">${CURRENT_VIEWER ? "Here's what's happening in " + CURRENT_VIEWER.name + " today." : "Here's what's happening across the Handbook today."}</p>
+      <p class="muted">${CURRENT_VIEWER ? "Here's what's happening across the Handbook today, " + escapeHtml(CURRENT_VIEWER.lastName) + "." : "Here's what's happening across the Handbook today."}</p>
     </div>
     <div class="dept-tiles">${tiles}</div>
     <div class="dash-columns">
-      <div class="panel"><h2>${CURRENT_VIEWER ? "Needs attention in " + CURRENT_VIEWER.name : "Needs attention"}</h2>${waiting}</div>
+      <div class="panel"><h2>Needs attention</h2>${waiting}</div>
       <div class="panel"><h2>Team health</h2>${health}</div>
     </div>`;
 
@@ -999,10 +1023,8 @@ function renderLibrary(params) {
           <h1 id="dept-heading">All SOPs</h1>
           <div class="row" style="gap:10px">
             ${!CURRENT_VIEWER
-              ? `<button class="btn btn-secondary" id="add-sop-btn" disabled title="Set your department to add a new SOP">+ Add SOP</button>`
-              : !MANAGE_SOPS_IDS.has(CURRENT_VIEWER.id)
-              ? `<button class="btn btn-secondary" id="add-sop-btn" disabled title="Only department leads can add a SOP">+ Add SOP</button>`
-              : `<button class="btn btn-secondary" id="add-sop-btn" title="Add a new SOP for ${CURRENT_VIEWER.name}">+ Add SOP</button>`}
+              ? `<button class="btn btn-secondary" id="add-sop-btn" disabled title="Log in to add a new SOP">+ Add SOP</button>`
+              : `<button class="btn btn-secondary" id="add-sop-btn" title="Add a new SOP as ${escapeAttr(CURRENT_VIEWER.lastName)}">+ Add SOP</button>`}
             <div class="view-toggle">
               <button data-view="grid" class="${libState.view === "grid" ? "active" : ""}">Grid</button>
               <button data-view="list" class="${libState.view === "list" ? "active" : ""}">List</button>
@@ -1108,13 +1130,13 @@ function renderSuggestionsPage() {
         const status = suggestionStatus(s);
         let actionHtml = "";
         if (status === "approved") {
-          actionHtml = `<span class="review-note">Approved by ${s.approvedBy ? s.approvedBy.deptName + " Team" : "—"}${s.approvedDate ? " · " + s.approvedDate : ""}</span>`;
+          actionHtml = `<span class="review-note">Approved by ${s.approvedBy ? s.approvedBy.lastName : "—"}${s.approvedDate ? " · " + s.approvedDate : ""}</span>`;
         } else if (!sop) {
           actionHtml = `<span class="review-note">This SOP no longer exists.</span>`;
         } else if (!CURRENT_VIEWER) {
-          actionHtml = `<button class="btn btn-secondary" disabled title="Set your department to approve">Approve</button>`;
-        } else if (CURRENT_VIEWER.id !== sop.department) {
-          actionHtml = `<button class="btn btn-secondary" disabled title="Only ${sopDept.name} can approve this">Approve</button>`;
+          actionHtml = `<button class="btn btn-secondary" disabled title="Log in as Admin to approve">Approve</button>`;
+        } else if (!isAdmin(CURRENT_VIEWER)) {
+          actionHtml = `<button class="btn btn-secondary" disabled title="Only an Admin can approve this">Approve</button>`;
         } else {
           actionHtml = `<button class="btn btn-secondary" data-approve="${s.id}">Approve</button>`;
         }
@@ -1123,7 +1145,7 @@ function renderSuggestionsPage() {
           : `<div class="target">Unknown SOP</div>`;
         return `<div class="review-item">
           <div class="suggestion-meta">
-            <span class="suggestion-dept">${s.deptName}</span>
+            <span class="suggestion-dept">${escapeHtml(s.lastName)} (${s.loginName})</span>
             <span class="suggestion-status suggestion-status-${status}">${status === "approved" ? "Approved" : "Pending"}</span>
             <span class="suggestion-date">${new Date(s.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
           </div>
@@ -1139,7 +1161,8 @@ function renderSuggestionsPage() {
       <h1>Suggestions &amp; feedback</h1>
       <div class="view-toggle" id="review-filters">${filters}</div>
     </div>
-    <div id="review-list">${rows}</div>`;
+    <div id="review-list">${rows}</div>
+    <div id="edit-proposals-section" style="margin-top:32px">${editProposalsSectionHtml()}</div>`;
 
   document.querySelectorAll("#review-filters [data-filter]").forEach((btn) => {
     btn.addEventListener("click", () => { reviewFilter = btn.dataset.filter; renderSuggestionsPage(); });
@@ -1154,15 +1177,172 @@ function renderSuggestionsPage() {
       btn.disabled = true;
       btn.textContent = "Approving...";
       try {
-        await API.approveSuggestion(s.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode);
+        await API.approveSuggestion(s.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
         s.status = "approved";
-        s.approvedBy = { deptId: CURRENT_VIEWER.id, deptName: CURRENT_VIEWER.name, deptCode: CURRENT_VIEWER.code };
+        s.approvedBy = { loginId: CURRENT_VIEWER.id, lastName: CURRENT_VIEWER.lastName };
         s.approvedDate = eventStamp().fullDate;
         renderSuggestionsPage();
       } catch (err) {
         btn.disabled = false;
         btn.textContent = "Approve";
         alert("Couldn't approve: " + err.message);
+      }
+    });
+  });
+  wireEditProposalsSection();
+}
+
+/* ============================== PENDING SOP EDITS (Member proposals) ====== */
+let EDIT_PROPOSALS = []; // populated from sop_edit_proposals at boot (see boot())
+const EDIT_FIELD_LABELS = {
+  title: "Title", subtitle: "Subtitle", never_do_this: "Never do this",
+  before_you_start: "Before you start", tools_systems: "Tools & systems", steps: "Steps",
+  success_criteria: "Success criteria", escalation: "Escalation path", forms: "Forms",
+};
+const EDIT_FIELD_CAMEL = {
+  title: "title", subtitle: "subtitle", never_do_this: "neverDoThis",
+  before_you_start: "beforeYouStart", tools_systems: "toolsSystems", steps: "steps",
+  success_criteria: "successCriteria", escalation: "escalation", forms: "forms",
+};
+function formatFieldValue(v) {
+  if (v === null || v === undefined) return "(none)";
+  if (typeof v === "string") return v || "(empty)";
+  if (Array.isArray(v)) {
+    if (!v.length) return "(none)";
+    return v.map((item) => (typeof item === "string" ? item : Object.values(item).filter(Boolean).join(" — "))).join("\n");
+  }
+  return JSON.stringify(v);
+}
+// Compares the proposal's saved field values against the SOP's CURRENT
+// values and returns only the fields that actually differ -- this is what
+// lets the review UI highlight just what changed, not the whole SOP.
+function diffProposalFields(sop, fields) {
+  const out = [];
+  Object.keys(fields || {}).forEach((key) => {
+    const camel = EDIT_FIELD_CAMEL[key];
+    if (!camel) return;
+    const oldVal = sop ? sop[camel] : undefined;
+    const newVal = fields[key];
+    if (JSON.stringify(oldVal == null ? null : oldVal) === JSON.stringify(newVal == null ? null : newVal)) return;
+    out.push({ key, label: EDIT_FIELD_LABELS[key] || key, oldVal, newVal });
+  });
+  return out;
+}
+let editProposalFilter = "pending";
+function editProposalsSectionHtml() {
+  const all = EDIT_PROPOSALS.slice().sort((a, b) => b.ts - a.ts);
+  const counts = {
+    all: all.length,
+    pending: all.filter((p) => p.status === "pending").length,
+    approved: all.filter((p) => p.status === "approved").length,
+    rejected: all.filter((p) => p.status === "rejected").length,
+  };
+  const list = editProposalFilter === "all" ? all : all.filter((p) => p.status === editProposalFilter);
+  const filterDefs = [
+    { id: "pending", label: "Pending" },
+    { id: "approved", label: "Approved" },
+    { id: "rejected", label: "Rejected" },
+    { id: "all", label: "All" },
+  ];
+  const filters = filterDefs.map((f) => `<button data-epfilter="${f.id}" class="${editProposalFilter === f.id ? "active" : ""}">${f.label} (${counts[f.id]})</button>`).join("");
+
+  const rows = list.length
+    ? list.map((p) => {
+        const sop = getSop(p.sopId);
+        const diff = diffProposalFields(sop, p.fields);
+        const diffHtml = diff.length
+          ? diff.map((d) => `
+            <div style="margin-bottom:10px">
+              <div class="muted small" style="font-weight:600">${escapeHtml(d.label)}</div>
+              <div style="color:var(--red);white-space:pre-wrap">&minus; ${escapeHtml(formatFieldValue(d.oldVal))}</div>
+              <div style="color:var(--green);white-space:pre-wrap">+ ${escapeHtml(formatFieldValue(d.newVal))}</div>
+            </div>`).join("")
+          : `<p class="muted small">No changes detected.</p>`;
+        let actionHtml = "";
+        if (p.status === "approved") {
+          actionHtml = `<span class="review-note">Approved by ${escapeHtml(p.decidedByLastName || "—")}${p.decidedDate ? " · " + p.decidedDate : ""}</span>`;
+        } else if (p.status === "rejected") {
+          actionHtml = `<span class="review-note">Rejected by ${escapeHtml(p.decidedByLastName || "—")}${p.decidedDate ? " · " + p.decidedDate : ""}</span>`;
+        } else if (!sop) {
+          actionHtml = `<span class="review-note">This SOP no longer exists.</span>`;
+        } else if (!isAdmin(CURRENT_VIEWER)) {
+          actionHtml = `<button class="btn btn-secondary" disabled title="Only an Admin can decide this">Approve</button> <button class="btn btn-secondary" disabled title="Only an Admin can decide this">Reject</button>`;
+        } else {
+          actionHtml = `<button class="btn btn-secondary" data-approve-edit="${p.id}">Approve</button> <button class="btn btn-danger" data-reject-edit="${p.id}">Reject</button>`;
+        }
+        return `<div class="review-item">
+          <div class="suggestion-meta">
+            <span class="suggestion-dept">${escapeHtml(p.lastName)} (${p.loginName})</span>
+            <span class="suggestion-status suggestion-status-${p.status === "approved" ? "approved" : "pending"}">${p.status === "pending" ? "Pending" : p.status === "approved" ? "Approved" : "Rejected"}</span>
+            <span class="suggestion-date">${new Date(p.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+          </div>
+          <div class="target" data-sop="${sop ? sop.id : ""}">${sop ? sop.title : "Unknown SOP"}</div>
+          <div class="proposal-diff">${diffHtml}</div>
+          <div class="review-footer">${actionHtml}</div>
+        </div>`;
+      }).join("")
+    : `<div class="empty-state">No ${editProposalFilter === "all" ? "" : editProposalFilter + " "}edit proposals yet.</div>`;
+
+  return `
+    <div class="library-header">
+      <h2>Pending SOP edits</h2>
+      <div class="view-toggle" id="edit-proposal-filters">${filters}</div>
+    </div>
+    <div id="edit-proposal-list">${rows}</div>`;
+}
+function wireEditProposalsSection() {
+  document.querySelectorAll("#edit-proposal-filters [data-epfilter]").forEach((btn) => {
+    btn.addEventListener("click", () => { editProposalFilter = btn.dataset.epfilter; renderSuggestionsPage(); });
+  });
+  document.querySelectorAll("#edit-proposals-section .target[data-sop]").forEach((el) => {
+    if (el.dataset.sop) el.addEventListener("click", () => go("/sop/" + el.dataset.sop));
+  });
+  document.querySelectorAll("[data-approve-edit]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const p = EDIT_PROPOSALS.find((x) => x.id === btn.dataset.approveEdit);
+      if (!p || !CURRENT_VIEWER) return;
+      btn.disabled = true;
+      btn.textContent = "Approving...";
+      try {
+        await API.approveSopEdit(p.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        p.status = "approved";
+        p.decidedByLastName = CURRENT_VIEWER.lastName;
+        p.decidedDate = eventStamp().fullDate;
+        const sop = getSop(p.sopId);
+        if (sop) {
+          Object.keys(p.fields || {}).forEach((key) => {
+            const camel = EDIT_FIELD_CAMEL[key];
+            if (camel) sop[camel] = p.fields[key];
+          });
+          sop.status = "review-due";
+          EVENTS.push({ sopId: sop.id, kind: "edited", loginId: p.loginId, lastName: p.lastName, loginName: p.loginName, fields: p.fields, ...eventStamp() });
+        }
+        renderSuggestionsPage();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Approve";
+        alert("Couldn't approve: " + err.message);
+      }
+    });
+  });
+  document.querySelectorAll("[data-reject-edit]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const p = EDIT_PROPOSALS.find((x) => x.id === btn.dataset.rejectEdit);
+      if (!p || !CURRENT_VIEWER) return;
+      const ok = confirm("Reject this proposed edit?");
+      if (!ok) return;
+      btn.disabled = true;
+      btn.textContent = "Rejecting...";
+      try {
+        await API.rejectSopEdit(p.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        p.status = "rejected";
+        p.decidedByLastName = CURRENT_VIEWER.lastName;
+        p.decidedDate = eventStamp().fullDate;
+        renderSuggestionsPage();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Reject";
+        alert("Couldn't reject: " + err.message);
       }
     });
   });
@@ -1181,9 +1361,9 @@ function renderSopDetail(id) {
   let approveHtml = "";
   if (sop.status !== "current") {
     if (!CURRENT_VIEWER) {
-      approveHtml = `<button class="btn btn-secondary" id="approve-btn" disabled title="Set your department to approve this SOP">Approve</button>`;
-    } else if (CURRENT_VIEWER.id !== sop.department) {
-      approveHtml = `<button class="btn btn-secondary" id="approve-btn" disabled title="Only ${dept.name} can approve this SOP">Approve</button>`;
+      approveHtml = `<button class="btn btn-secondary" id="approve-btn" disabled title="Log in as Admin to approve this SOP">Approve</button>`;
+    } else if (!isAdmin(CURRENT_VIEWER)) {
+      approveHtml = `<button class="btn btn-secondary" id="approve-btn" disabled title="Only an Admin can approve this SOP">Approve</button>`;
     } else {
       approveHtml = `<button class="btn btn-secondary" id="approve-btn" title="Mark this SOP as reviewed and current">Approve this SOP</button>`;
     }
@@ -1191,18 +1371,18 @@ function renderSopDetail(id) {
 
   let editHtml = "";
   if (!CURRENT_VIEWER) {
-    editHtml = `<button class="btn btn-secondary" id="edit-btn" disabled title="Set your department to edit this SOP">Edit</button>`;
-  } else if (CURRENT_VIEWER.id !== sop.department) {
-    editHtml = `<button class="btn btn-secondary" id="edit-btn" disabled title="Only ${dept.name} can edit this SOP">Edit</button>`;
-  } else {
+    editHtml = `<button class="btn btn-secondary" id="edit-btn" disabled title="Log in to edit this SOP">Edit</button>`;
+  } else if (isAdmin(CURRENT_VIEWER)) {
     editHtml = `<button class="btn btn-secondary" id="edit-btn" title="Edit this SOP">Edit</button>`;
+  } else {
+    editHtml = `<button class="btn btn-secondary" id="edit-btn" title="Propose an edit for an Admin to review">Propose edit</button>`;
   }
 
   let disapproveHtml = "";
   if (!CURRENT_VIEWER) {
-    disapproveHtml = `<button class="btn btn-danger" id="disapprove-btn" disabled title="Set your department to remove this SOP">Disapprove</button>`;
-  } else if (CURRENT_VIEWER.id !== sop.department) {
-    disapproveHtml = `<button class="btn btn-danger" id="disapprove-btn" disabled title="Only ${dept.name} can remove this SOP">Disapprove</button>`;
+    disapproveHtml = `<button class="btn btn-danger" id="disapprove-btn" disabled title="Log in as Admin to remove this SOP">Disapprove</button>`;
+  } else if (!isAdmin(CURRENT_VIEWER)) {
+    disapproveHtml = `<button class="btn btn-danger" id="disapprove-btn" disabled title="Only an Admin can remove this SOP">Disapprove</button>`;
   } else {
     disapproveHtml = `<button class="btn btn-danger" id="disapprove-btn" title="Remove this SOP permanently">Disapprove</button>`;
   }
@@ -1210,7 +1390,7 @@ function renderSopDetail(id) {
   const timeline = sopTimeline(sop.id);
   const historyRows = timeline.length
     ? timeline.map((e) => `
-      <div class="history-row"><span class="pill-avatar">${e.deptCode}</span><span class="name">${e.deptName} Team ${e.kind === "edited" ? "edited" : "approved"} this SOP</span><span class="date">${e.fullDate}</span></div>`).join("")
+      <div class="history-row"><span class="pill-avatar">${initialsFrom(e.lastName)}</span><span class="name">${escapeHtml(e.lastName)}${e.loginName ? ` (${e.loginName})` : ""} ${e.kind === "edited" ? "edited" : "approved"} this SOP</span><span class="date">${e.fullDate}</span></div>`).join("")
     : `<p class="muted small">No updates yet.</p>`;
   const historyBtnHtml = timeline.length
     ? `<button class="btn btn-secondary" id="history-btn" title="View update history">History</button>`
@@ -1218,6 +1398,15 @@ function renderSopDetail(id) {
 
   let neverHtml = "";
   if (sop.neverDoThis) neverHtml = `<div class="never-banner"><span class="tag">Never do this</span><span>${sop.neverDoThis}</span></div>`;
+
+  const pendingEdits = EDIT_PROPOSALS.filter((p) => p.sopId === sop.id && p.status === "pending");
+  let pendingEditHtml = "";
+  if (pendingEdits.length) {
+    pendingEditHtml = `<div class="never-banner" id="section-pending-edit">
+      <span class="tag">Edit awaiting approval</span>
+      <span>${pendingEdits.length === 1 ? `${escapeHtml(pendingEdits[0].lastName)} proposed changes to this SOP` : `${pendingEdits.length} proposed edits`} &mdash; <a id="pending-edit-link" style="text-decoration:underline;cursor:pointer">review${isAdmin(CURRENT_VIEWER) ? "" : " status"}</a></span>
+    </div>`;
+  }
 
   let blackoutHtml = "";
   if (sop.blackoutPeriods && sop.blackoutPeriods.length) {
@@ -1324,6 +1513,7 @@ function renderSopDetail(id) {
     <div class="sop-layout">
       <main>
         ${neverHtml}
+        ${pendingEditHtml}
         ${blackoutHtml}
         ${beforeHtml}
         ${toolsHtml}
@@ -1360,18 +1550,22 @@ function renderSopDetail(id) {
   if (editBtn && !editBtn.disabled) {
     editBtn.addEventListener("click", () => go("/edit/" + sop.id));
   }
+  const pendingEditLink = document.getElementById("pending-edit-link");
+  if (pendingEditLink) {
+    pendingEditLink.addEventListener("click", () => go("/suggestions"));
+  }
   const approveBtn = document.getElementById("approve-btn");
   if (approveBtn && !approveBtn.disabled) {
     approveBtn.addEventListener("click", async () => {
       approveBtn.disabled = true;
       approveBtn.textContent = "Approving...";
       try {
-        await API.approveSop(sop.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode);
-        const approval = { deptId: CURRENT_VIEWER.id, deptName: CURRENT_VIEWER.name, deptCode: CURRENT_VIEWER.code, ...eventStamp() };
+        await API.approveSop(sop.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        const approval = { lastName: CURRENT_VIEWER.lastName, ...eventStamp() };
         sop.status = "current";
         sop.lastReviewed = approval.monthYear;
-        sop.signedOffBy = [...(sop.signedOffBy || []), { name: approval.deptName + " Team", initials: approval.deptCode, date: approval.fullDate }];
-        EVENTS.push({ sopId: sop.id, kind: "approved", deptName: approval.deptName, deptCode: approval.deptCode, ts: approval.ts, fullDate: approval.fullDate });
+        sop.signedOffBy = [...(sop.signedOffBy || []), { name: approval.lastName, initials: initialsFrom(approval.lastName), date: approval.fullDate }];
+        EVENTS.push({ sopId: sop.id, kind: "approved", lastName: approval.lastName, loginName: "Admin", ts: approval.ts, fullDate: approval.fullDate });
         renderSopDetail(sop.id);
       } catch (err) {
         approveBtn.disabled = false;
@@ -1388,7 +1582,7 @@ function renderSopDetail(id) {
       disapproveBtn.disabled = true;
       disapproveBtn.textContent = "Removing...";
       try {
-        await API.disapproveSop(sop.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode);
+        await API.disapproveSop(sop.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
         const idx = SOPS.findIndex((s) => s.id === sop.id);
         if (idx !== -1) SOPS.splice(idx, 1);
         go("/library");
@@ -1460,10 +1654,9 @@ function renderSopEdit(id) {
     document.getElementById("back-lib").addEventListener("click", () => go("/library"));
     return;
   }
-  if (!CURRENT_VIEWER || CURRENT_VIEWER.id !== sop.department) {
-    const dept = getDepartment(sop.department);
+  if (!CURRENT_VIEWER) {
     pageBody.innerHTML = `<div class="empty-state">
-      <p>Only ${dept.name} can edit this SOP.</p>
+      <p>Log in to edit this SOP.</p>
       <button class="btn btn-secondary" id="back-sop">Back to the SOP</button>
     </div>`;
     document.getElementById("back-sop").addEventListener("click", () => go("/sop/" + sop.id));
@@ -1471,13 +1664,15 @@ function renderSopEdit(id) {
   }
 
   const f = fieldsFromSop(sop);
+  const memberProposing = !isAdmin(CURRENT_VIEWER);
 
   pageBody.innerHTML = `
     <div class="breadcrumb">
       <a id="crumb-sop">${sop.title}</a><span class="sep">/</span>
       <span>Edit</span>
     </div>
-    <h1 style="margin-bottom:20px">Edit SOP</h1>
+    <h1 style="margin-bottom:6px">Edit SOP</h1>
+    ${memberProposing ? `<p class="muted small" style="margin-bottom:14px">Your changes will be submitted as a proposal &mdash; an Admin needs to approve them before they go live.</p>` : ""}
 
     <div class="edit-field"><label>Title</label><input id="ef-title" class="ef-input" value="${escapeAttr(f.title)}"></div>
     <div class="edit-field"><label>Subtitle</label><input id="ef-subtitle" class="ef-input" value="${escapeAttr(f.subtitle)}"></div>
@@ -1497,7 +1692,7 @@ function renderSopEdit(id) {
 
     <div class="edit-actions">
       <button class="btn btn-secondary" id="edit-cancel">Cancel</button>
-      <button class="btn btn-primary" id="edit-save">Save changes</button>
+      <button class="btn btn-primary" id="edit-save">${memberProposing ? "Submit for approval" : "Save changes"}</button>
     </div>
     <p class="muted small" id="edit-status" style="min-height:16px;margin-top:8px"></p>`;
 
@@ -1571,7 +1766,7 @@ function renderSopEdit(id) {
     fields.neverDoThis = neverVal || undefined;
 
     saveBtn.disabled = true;
-    saveBtn.textContent = "Saving...";
+    saveBtn.textContent = memberProposing ? "Submitting..." : "Saving...";
     const snakeFields = {
       title: fields.title,
       subtitle: fields.subtitle,
@@ -1584,14 +1779,23 @@ function renderSopEdit(id) {
       never_do_this: neverVal || null,
     };
     try {
-      await API.editSop(sop.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, snakeFields);
-      Object.assign(sop, fields);
-      sop.status = "review-due";
-      EVENTS.push({ sopId: sop.id, kind: "edited", deptName: CURRENT_VIEWER.name, deptCode: CURRENT_VIEWER.code, ...eventStamp() });
-      go("/sop/" + sop.id);
+      if (memberProposing) {
+        const proposalId = await API.proposeSopEdit(sop.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, snakeFields);
+        EDIT_PROPOSALS.push({
+          id: proposalId, sopId: sop.id, loginId: CURRENT_VIEWER.id, loginName: CURRENT_VIEWER.name,
+          lastName: CURRENT_VIEWER.lastName, fields: snakeFields, status: "pending", ts: Date.now(),
+        });
+        go("/sop/" + sop.id);
+      } else {
+        await API.editSop(sop.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, snakeFields);
+        Object.assign(sop, fields);
+        sop.status = "review-due";
+        EVENTS.push({ sopId: sop.id, kind: "edited", lastName: CURRENT_VIEWER.lastName, loginName: CURRENT_VIEWER.name, fields: snakeFields, ...eventStamp() });
+        go("/sop/" + sop.id);
+      }
     } catch (err) {
       saveBtn.disabled = false;
-      saveBtn.textContent = "Save changes";
+      saveBtn.textContent = memberProposing ? "Submit for approval" : "Save changes";
       statusEl.textContent = "Couldn't save: " + err.message;
     }
   });
@@ -1599,8 +1803,8 @@ function renderSopEdit(id) {
 function renderSopNew() {
   if (!CURRENT_VIEWER) {
     pageBody.innerHTML = `<div class="empty-state">
-      <p>Set your department to add a new SOP.</p>
-      <button class="btn btn-secondary" id="new-pick-viewer">Which department?</button>
+      <p>Log in to add a new SOP.</p>
+      <button class="btn btn-secondary" id="new-pick-viewer">Log in</button>
       <div style="margin-top:12px"><button class="btn btn-secondary" id="back-lib3">Back to the library</button></div>
     </div>`;
     document.getElementById("new-pick-viewer").addEventListener("click", (e) => { e.stopPropagation(); openViewerMenu(); });
@@ -1608,15 +1812,22 @@ function renderSopNew() {
     return;
   }
 
+  const deptOptions = DEPARTMENTS.map((d) => `<option value="${d.id}">${d.name}</option>`).join("");
+
   pageBody.innerHTML = `
     <div class="breadcrumb">
       <a id="crumb-lib3">Library</a><span class="sep">/</span>
       <span>New SOP</span>
     </div>
     <h1 style="margin-bottom:6px">Add a new SOP</h1>
-    <p class="muted small" style="margin-bottom:20px">For ${CURRENT_VIEWER.name} &middot; starts as a draft until reviewed and approved.</p>
+    <p class="muted small" style="margin-bottom:20px">Adding as ${escapeHtml(CURRENT_VIEWER.lastName)} (${CURRENT_VIEWER.name}) &middot; starts as a draft until reviewed and approved.</p>
 
-    <div class="edit-field"><label>Your name</label><input id="ef-added-by" class="ef-input" placeholder="e.g. Jordan Lee"></div>
+    <div class="edit-field"><label>Department</label>
+      <select id="ef-department" class="ef-input">
+        <option value="">Choose which team this SOP belongs to&hellip;</option>
+        ${deptOptions}
+      </select>
+    </div>
     <div class="edit-field"><label>Title</label><input id="ef-title" class="ef-input" placeholder="e.g. Restocking the showroom fridge"></div>
     <div class="edit-field"><label>Subtitle</label><input id="ef-subtitle" class="ef-input" placeholder="One line describing what this SOP covers"></div>
     <div class="edit-field"><label>Never do this <span class="muted small">(optional)</span></label><input id="ef-never" class="ef-input"></div>
@@ -1691,13 +1902,14 @@ function renderSopNew() {
       return step;
     }).filter((s) => s.title);
 
-    const addedBy = document.getElementById("ef-added-by").value.trim();
-    if (!addedBy) { statusEl.textContent = "Enter your name before saving."; return; }
+    const departmentTag = document.getElementById("ef-department").value;
+    if (!departmentTag) { statusEl.textContent = "Choose which department this SOP belongs to."; return; }
     const title = document.getElementById("ef-title").value.trim();
     if (!title) { statusEl.textContent = "Title can't be empty."; return; }
     if (!steps.length) { statusEl.textContent = "Add at least one step before saving."; return; }
 
-    const addedByInitials = addedBy.split(" ").filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 3) || CURRENT_VIEWER.code;
+    const addedBy = CURRENT_VIEWER.lastName;
+    const addedByInitials = initialsFrom(addedBy);
     const subtitle = document.getElementById("ef-subtitle").value.trim();
     const beforeYouStart = linesOf(document.getElementById("ef-before"));
     const toolsSystems = pairsOf(document.getElementById("ef-tools"), "name", "note");
@@ -1709,14 +1921,14 @@ function renderSopNew() {
     saveBtn.disabled = true;
     saveBtn.textContent = "Saving...";
     try {
-      const newId = await API.addSop(CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, {
-        title, owner_name: addedBy, subtitle,
+      const newId = await API.addSop(CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, departmentTag, {
+        title, subtitle,
         before_you_start: beforeYouStart, tools_systems: toolsSystems,
         steps, success_criteria: successCriteria, escalation, forms,
         never_do_this: neverVal || null,
       });
       const newSop = {
-        id: newId, title, department: CURRENT_VIEWER.id, status: "draft",
+        id: newId, title, department: departmentTag, status: "draft",
         owner: { name: addedBy, initials: addedByInitials },
         lastReviewed: null, nextReview: null, version: "v1 (draft)",
         subtitle, beforeYouStart, toolsSystems, signedOffBy: [], relatedIds: [],
@@ -1812,7 +2024,7 @@ function renderRun(id) {
     body.innerHTML = `<div class="complete-screen">
       <div class="complete-icon">&#10003;</div>
       <h2>${sop.title.split(" — ")[0]}. Done.</h2>
-      <p class="sub">${CURRENT_VIEWER ? "Nice work, " + CURRENT_VIEWER.name + " team." : "Nice work."}</p>
+      <p class="sub">${CURRENT_VIEWER ? "Nice work, " + escapeHtml(CURRENT_VIEWER.lastName) + "." : "Nice work."}</p>
       ${recapRows ? `<div class="recap-card"><h3>This run</h3>${recapRows}</div>` : ""}
       ${flagged.size ? `<div class="flag-note">You flagged step${flagged.size > 1 ? "s" : ""} ${[...flagged].map((i) => i + 1).join(", ")} as unclear. ${sop.owner.name} will see it in the review queue.</div>` : ""}
     </div>`;
@@ -1862,20 +2074,39 @@ function mapSop(row) {
     signedOffBy: row.signed_off_by || [],
   };
 }
+function loginLabel(id) {
+  const l = LOGINS.find((x) => x.id === id);
+  return l ? l.name : (id || "");
+}
 function mapEvent(row) {
-  return { sopId: row.sop_id, kind: row.kind, deptName: row.department_name, deptCode: row.department_code, ts: row.ts, fullDate: row.full_date, monthYear: row.month_year };
+  return { sopId: row.sop_id, kind: row.kind, loginId: row.login_id, lastName: row.actor_last_name, loginName: loginLabel(row.login_id), ts: row.ts, fullDate: row.full_date, monthYear: row.month_year };
 }
 function mapSuggestion(row) {
   return {
     id: row.id,
     sopId: row.sop_id,
-    deptId: row.department_id,
-    deptName: row.department_name,
+    loginId: row.login_id,
+    loginName: loginLabel(row.login_id),
+    lastName: row.last_name,
     text: row.text,
     ts: row.ts,
     status: row.status,
-    approvedBy: row.approved_by_dept_id ? { deptId: row.approved_by_dept_id, deptName: row.approved_by_dept_name } : undefined,
+    approvedBy: row.approved_by_login_id ? { loginId: row.approved_by_login_id, lastName: row.approved_by_last_name } : undefined,
     approvedDate: row.approved_date || undefined,
+  };
+}
+function mapEditProposal(row) {
+  return {
+    id: row.id,
+    sopId: row.sop_id,
+    loginId: row.login_id,
+    loginName: loginLabel(row.login_id),
+    lastName: row.last_name,
+    fields: row.fields || {},
+    status: row.status,
+    decidedByLastName: row.decided_by_last_name || undefined,
+    decidedDate: row.decided_date || undefined,
+    ts: row.ts,
   };
 }
 
@@ -1890,12 +2121,13 @@ async function boot() {
   }
   pageBody.innerHTML = `<div class="empty-state"><p class="muted">Loading the handbook...</p></div>`;
   try {
-    const [sopsRows, eventRows, suggestionRows] = await Promise.all([
-      API.listSops(), API.listSopEvents(), API.listSuggestions(),
+    const [sopsRows, eventRows, suggestionRows, proposalRows] = await Promise.all([
+      API.listSops(), API.listSopEvents(), API.listSuggestions(), API.listSopEditProposals(),
     ]);
     SOPS = sopsRows.map(mapSop);
     EVENTS = eventRows.map(mapEvent);
     SUGGESTIONS = suggestionRows.map(mapSuggestion);
+    EDIT_PROPOSALS = proposalRows.map(mapEditProposal);
     render();
   } catch (err) {
     pageBody.innerHTML = `<div class="empty-state">

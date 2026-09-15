@@ -1,7 +1,9 @@
 // Thin wrapper over Supabase's auto-generated REST API (PostgREST).
 // Every write goes through an RPC function defined in
-// supabase/migrations/0001_init.sql -- see that file for the actual
-// security model (passcode re-checked server-side on every call).
+// supabase/migrations/0001_init.sql (and later migrations) -- see those
+// files for the actual security model (passcode re-checked server-side on
+// every call; the last name a caller passes is attribution only, never
+// itself verified).
 const API = (() => {
   const cfg = window.SUPABASE_CONFIG || {};
   const BASE = (cfg.url || "").replace(/\/$/, "");
@@ -43,28 +45,40 @@ const API = (() => {
     listSops() { return rest("sops?select=*"); },
     listSopEvents() { return rest("sop_events?select=*"); },
     listSuggestions() { return rest("suggestions?select=*"); },
+    listSopEditProposals() { return rest("sop_edit_proposals?select=*"); },
 
     // ---- writes (all passcode-gated server-side) ----
-    login(departmentId, passcode) {
-      return rpc("login_department", { p_department_id: departmentId, p_passcode: passcode }).then((rows) => rows[0]);
+    login(loginId, passcode) {
+      return rpc("login", { p_login_id: loginId, p_passcode: passcode }).then((rows) => rows[0]);
     },
-    approveSop(sopId, departmentId, passcode) {
-      return rpc("approve_sop", { p_sop_id: sopId, p_department_id: departmentId, p_passcode: passcode });
+    approveSop(sopId, loginId, passcode, lastName) {
+      return rpc("approve_sop", { p_sop_id: sopId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
     },
-    disapproveSop(sopId, departmentId, passcode) {
-      return rpc("disapprove_sop", { p_sop_id: sopId, p_department_id: departmentId, p_passcode: passcode });
+    disapproveSop(sopId, loginId, passcode, lastName) {
+      return rpc("disapprove_sop", { p_sop_id: sopId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
     },
-    editSop(sopId, departmentId, passcode, fields) {
-      return rpc("edit_sop", { p_sop_id: sopId, p_department_id: departmentId, p_passcode: passcode, p_fields: fields });
+    // Admin-only: applies immediately. A Member's edit goes through
+    // proposeSopEdit/approveSopEdit/rejectSopEdit below instead.
+    editSop(sopId, loginId, passcode, lastName, fields) {
+      return rpc("edit_sop", { p_sop_id: sopId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_fields: fields });
     },
-    addSop(departmentId, passcode, sop) {
-      return rpc("add_sop", { p_department_id: departmentId, p_passcode: passcode, p_sop: sop });
+    addSop(loginId, passcode, lastName, departmentTag, sop) {
+      return rpc("add_sop", { p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_department_tag: departmentTag, p_sop: sop });
     },
-    addSuggestion(sopId, departmentId, passcode, text) {
-      return rpc("add_suggestion", { p_sop_id: sopId, p_department_id: departmentId, p_passcode: passcode, p_text: text });
+    addSuggestion(sopId, loginId, passcode, lastName, text) {
+      return rpc("add_suggestion", { p_sop_id: sopId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_text: text });
     },
-    approveSuggestion(suggestionId, departmentId, passcode) {
-      return rpc("approve_suggestion", { p_suggestion_id: suggestionId, p_department_id: departmentId, p_passcode: passcode });
+    approveSuggestion(suggestionId, loginId, passcode, lastName) {
+      return rpc("approve_suggestion", { p_suggestion_id: suggestionId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
+    },
+    proposeSopEdit(sopId, loginId, passcode, lastName, fields) {
+      return rpc("propose_sop_edit", { p_sop_id: sopId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_fields: fields });
+    },
+    approveSopEdit(proposalId, loginId, passcode, lastName) {
+      return rpc("approve_sop_edit", { p_proposal_id: proposalId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
+    },
+    rejectSopEdit(proposalId, loginId, passcode, lastName) {
+      return rpc("reject_sop_edit", { p_proposal_id: proposalId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
     },
   };
 })();
