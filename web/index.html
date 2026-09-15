@@ -335,6 +335,17 @@
   .review-item .review-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
   .review-item .review-note { font-size: 12px; color: var(--text-faint); }
 
+  /* Directory org chart: a nested list where each branch is indented and
+     connected to its manager with a simple CSS line, no chart library. */
+  .org-tree, .org-branch { list-style: none; margin: 0; padding: 0; }
+  .org-tree { padding-bottom: 8px; }
+  .org-tree li { padding: 6px 0; }
+  .org-branch { margin: 6px 0 6px 20px; padding-left: 24px; border-left: 2px solid var(--border); }
+  .org-branch > li { position: relative; }
+  .org-branch > li::before { content: ""; position: absolute; left: -24px; top: 22px; width: 24px; height: 2px; background: var(--border); }
+  .org-card { display: inline-flex; flex-direction: column; gap: 2px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 14px; min-width: 200px; max-width: 320px; }
+  .org-card .org-name { font: 700 14px Barlow, sans-serif; color: var(--text-primary); }
+
   /* ---- SOP edit form ---- */
   .edit-field { margin-bottom: 20px; max-width: 720px; }
   .edit-field label { display: block; font: 700 12px "Barlow Condensed", sans-serif; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); margin-bottom: 6px; }
@@ -1363,15 +1374,23 @@ function wireEditProposalsSection() {
 }
 
 /* ==================== PENDING DIRECTORY EDITS (Member proposals) ========= */
-const DIRECTORY_FIELD_LABELS = { name: "Name", role: "Role", department: "Department", email: "Email", phone: "Phone", notes: "Notes" };
+const DIRECTORY_FIELD_LABELS = { name: "Name", role: "Role", department: "Department", email: "Email", phone: "Phone", notes: "Notes", reports_to: "Reports to" };
+function personName(id) {
+  const p = DIRECTORY.find((x) => x.id === id);
+  return p ? p.name : null;
+}
 function diffDirectoryProposalFields(entry, fields) {
   const out = [];
   Object.keys(fields || {}).forEach((key) => {
     if (!(key in DIRECTORY_FIELD_LABELS)) return;
-    const oldVal = entry ? entry[key] : undefined;
+    const oldVal = entry ? (key === "reports_to" ? entry.reportsTo : entry[key]) : undefined;
     const newVal = fields[key];
     if ((oldVal || "") === (newVal || "")) return;
-    const display = (v) => (key === "department" ? ((getDepartment(v) || {}).name || v || "(none)") : (v || "(empty)"));
+    const display = (v) => {
+      if (key === "department") return (getDepartment(v) || {}).name || v || "(none)";
+      if (key === "reports_to") return v ? (personName(v) || v) : "(none)";
+      return v || "(empty)";
+    };
     out.push({ key, label: DIRECTORY_FIELD_LABELS[key], oldVal: display(oldVal), newVal: display(newVal) });
   });
   return out;
@@ -1457,7 +1476,16 @@ function wireDirectoryProposalsSection() {
         p.decidedByLastName = CURRENT_VIEWER.lastName;
         p.decidedDate = eventStamp().fullDate;
         const entry = DIRECTORY.find((x) => x.id === p.entryId);
-        if (entry) Object.assign(entry, p.fields);
+        if (entry) {
+          const f = p.fields || {};
+          if ("name" in f) entry.name = f.name;
+          if ("role" in f) entry.role = f.role;
+          if ("department" in f) entry.department = f.department;
+          if ("email" in f) entry.email = f.email;
+          if ("phone" in f) entry.phone = f.phone;
+          if ("notes" in f) entry.notes = f.notes;
+          if ("reports_to" in f) entry.reportsTo = f.reports_to || null;
+        }
         renderSuggestionsPage();
       } catch (err) {
         btn.disabled = false;
@@ -2203,45 +2231,116 @@ function renderRun(id) {
 
 /* ============================== DIRECTORY ============================== */
 let directorySearchQuery = "";
+
+// Options for the "Reports to" dropdown: everyone except the person
+// themselves (so no one can be set as their own manager).
+function directoryManagerOptions(excludeId, selectedId) {
+  return DIRECTORY
+    .filter((p) => p.id !== excludeId)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((p) => `<option value="${p.id}" ${p.id === selectedId ? "selected" : ""}>${escapeHtml(p.name)} &mdash; ${escapeHtml(p.role)}</option>`)
+    .join("");
+}
+
+// Builds the org-chart shape from reportsTo pointers: a map of managerId
+// -> their direct reports, plus the list of "roots" to start rendering
+// from (no manager, or a manager that no longer exists). A person whose
+// reports_to chain forms a cycle disconnected from any real root would
+// otherwise never render at all -- stranded entries are appended as
+// extra roots so nobody silently disappears from the chart.
+function buildDirectoryTree(entries) {
+  const byId = new Map(entries.map((p) => [p.id, p]));
+  const childrenOf = new Map();
+  entries.forEach((p) => {
+    const managerId = p.reportsTo && byId.has(p.reportsTo) ? p.reportsTo : null;
+    if (managerId) {
+      if (!childrenOf.has(managerId)) childrenOf.set(managerId, []);
+      childrenOf.get(managerId).push(p);
+    }
+  });
+  childrenOf.forEach((kids) => kids.sort((a, b) => a.name.localeCompare(b.name)));
+
+  const roots = entries.filter((p) => !(p.reportsTo && byId.has(p.reportsTo))).sort((a, b) => a.name.localeCompare(b.name));
+  const reached = new Set();
+  const markReached = (id) => {
+    if (reached.has(id)) return;
+    reached.add(id);
+    (childrenOf.get(id) || []).forEach((c) => markReached(c.id));
+  };
+  roots.forEach((r) => markReached(r.id));
+  const stranded = entries.filter((p) => !reached.has(p.id));
+
+  return { roots: [...roots, ...stranded], childrenOf };
+}
+
+function directoryActionsHtml(p) {
+  if (p.status === "draft") {
+    return isAdmin(CURRENT_VIEWER)
+      ? `<button class="btn btn-secondary" data-approve-person="${p.id}">Approve</button> <button class="btn btn-danger" data-remove-person="${p.id}">Remove</button>`
+      : `<span class="muted small">Awaiting Admin approval</span>`;
+  }
+  if (CURRENT_VIEWER) {
+    return `<button class="btn btn-secondary" data-edit-person="${p.id}">Edit</button>${isAdmin(CURRENT_VIEWER) ? ` <button class="btn btn-danger" data-remove-person="${p.id}">Remove</button>` : ""}`;
+  }
+  return "";
+}
+
+function renderOrgNode(p, childrenOf) {
+  const dept = getDepartment(p.department);
+  const kids = childrenOf.get(p.id) || [];
+  const contactBits = [
+    p.email ? `<a href="mailto:${escapeAttr(p.email)}">${escapeHtml(p.email)}</a>` : "",
+    p.phone ? `<a href="tel:${escapeAttr(p.phone)}">${escapeHtml(p.phone)}</a>` : "",
+  ].filter(Boolean).join(" &middot; ");
+  return `<li>
+    <div class="org-card">
+      <div class="org-name">${escapeHtml(p.name)} ${p.status === "draft" ? `<span class="badge badge-draft">Pending</span>` : ""}</div>
+      <div class="muted small">${escapeHtml(p.role)}${dept ? " &middot; " + dept.name : ""}</div>
+      ${contactBits ? `<div class="muted small">${contactBits}</div>` : ""}
+      ${p.notes ? `<div class="muted small">${escapeHtml(p.notes)}</div>` : ""}
+      <div class="row" style="gap:8px;margin-top:6px">${directoryActionsHtml(p)}</div>
+    </div>
+    ${kids.length ? `<ul class="org-branch">${kids.map((c) => renderOrgNode(c, childrenOf)).join("")}</ul>` : ""}
+  </li>`;
+}
+
 function renderDirectory() {
   const q = directorySearchQuery.trim().toLowerCase();
-  const entries = DIRECTORY
-    .filter((p) => {
-      if (!q) return true;
-      const dept = getDepartment(p.department);
-      return [p.name, p.role, p.email, dept ? dept.name : ""].join(" ").toLowerCase().includes(q);
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
+  let bodyHtml;
 
-  const rows = entries.length
-    ? entries.map((p) => {
+  if (q) {
+    const entries = DIRECTORY
+      .filter((p) => {
         const dept = getDepartment(p.department);
-        const contactBits = [
-          p.email ? `<a href="mailto:${escapeAttr(p.email)}">${escapeHtml(p.email)}</a>` : "",
-          p.phone ? `<a href="tel:${escapeAttr(p.phone)}">${escapeHtml(p.phone)}</a>` : "",
-        ].filter(Boolean).join(" &middot; ");
+        return [p.name, p.role, p.email, dept ? dept.name : ""].join(" ").toLowerCase().includes(q);
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
 
-        let actionsHtml = "";
-        if (p.status === "draft") {
-          actionsHtml = isAdmin(CURRENT_VIEWER)
-            ? `<button class="btn btn-secondary" data-approve-person="${p.id}">Approve</button> <button class="btn btn-danger" data-remove-person="${p.id}">Remove</button>`
-            : `<span class="muted small">Awaiting Admin approval</span>`;
-        } else if (CURRENT_VIEWER) {
-          actionsHtml = `<button class="btn btn-secondary" data-edit-person="${p.id}">Edit</button>${isAdmin(CURRENT_VIEWER) ? ` <button class="btn btn-danger" data-remove-person="${p.id}">Remove</button>` : ""}`;
-        }
-
-        return `<div class="review-item">
-          <div class="suggestion-meta">
-            <span class="suggestion-dept">${escapeHtml(p.name)}</span>
-            ${p.status === "draft" ? `<span class="badge badge-draft">Pending</span>` : ""}
-          </div>
-          <div class="target">${escapeHtml(p.role)}${dept ? " &middot; " + dept.name : ""}</div>
-          ${contactBits ? `<p class="suggestion-text muted small">${contactBits}</p>` : ""}
-          ${p.notes ? `<p class="muted small">${escapeHtml(p.notes)}</p>` : ""}
-          <div class="review-footer">${actionsHtml}</div>
-        </div>`;
-      }).join("")
-    : `<div class="empty-state">${q ? "No one matches your search." : "No one in the directory yet."}</div>`;
+    bodyHtml = entries.length
+      ? entries.map((p) => {
+          const dept = getDepartment(p.department);
+          const contactBits = [
+            p.email ? `<a href="mailto:${escapeAttr(p.email)}">${escapeHtml(p.email)}</a>` : "",
+            p.phone ? `<a href="tel:${escapeAttr(p.phone)}">${escapeHtml(p.phone)}</a>` : "",
+          ].filter(Boolean).join(" &middot; ");
+          return `<div class="review-item">
+            <div class="suggestion-meta">
+              <span class="suggestion-dept">${escapeHtml(p.name)}</span>
+              ${p.status === "draft" ? `<span class="badge badge-draft">Pending</span>` : ""}
+            </div>
+            <div class="target">${escapeHtml(p.role)}${dept ? " &middot; " + dept.name : ""}</div>
+            ${contactBits ? `<p class="suggestion-text muted small">${contactBits}</p>` : ""}
+            ${p.notes ? `<p class="muted small">${escapeHtml(p.notes)}</p>` : ""}
+            <div class="review-footer">${directoryActionsHtml(p)}</div>
+          </div>`;
+        }).join("")
+      : `<div class="empty-state">No one matches your search.</div>`;
+  } else {
+    const { roots, childrenOf } = buildDirectoryTree(DIRECTORY);
+    bodyHtml = roots.length
+      ? `<ul class="org-tree">${roots.map((r) => renderOrgNode(r, childrenOf)).join("")}</ul>`
+      : `<div class="empty-state">No one in the directory yet.</div>`;
+  }
 
   pageBody.innerHTML = `
     <div class="library-header">
@@ -2253,7 +2352,7 @@ function renderDirectory() {
           : `<button class="btn btn-secondary" id="add-person-btn" disabled title="Log in to add a person">+ Add person</button>`}
       </div>
     </div>
-    <div id="directory-list">${rows}</div>`;
+    <div id="directory-list" style="overflow-x:auto">${bodyHtml}</div>`;
 
   document.getElementById("directory-search").addEventListener("input", (e) => {
     directorySearchQuery = e.target.value;
@@ -2329,6 +2428,12 @@ function renderDirectoryNew() {
         ${deptOptions}
       </select>
     </div>
+    <div class="edit-field"><label>Reports to <span class="muted small">(optional)</span></label>
+      <select id="ef-person-reports-to" class="ef-input">
+        <option value="">No one / top of chart</option>
+        ${directoryManagerOptions(null, null)}
+      </select>
+    </div>
     <div class="edit-field"><label>Email <span class="muted small">(optional)</span></label><input id="ef-person-email" class="ef-input" placeholder="name@amanandhiscave.com"></div>
     <div class="edit-field"><label>Phone <span class="muted small">(optional)</span></label><input id="ef-person-phone" class="ef-input" placeholder="e.g. (555) 555-0100"></div>
     <div class="edit-field"><label>Notes <span class="muted small">(optional)</span></label><input id="ef-person-notes" class="ef-input" placeholder="e.g. Out on Fridays"></div>
@@ -2352,6 +2457,7 @@ function renderDirectoryNew() {
     if (!role) { statusEl.textContent = "Role can't be empty."; return; }
     const department = document.getElementById("ef-person-department").value;
     if (!department) { statusEl.textContent = "Choose a department."; return; }
+    const reportsTo = document.getElementById("ef-person-reports-to").value;
     const email = document.getElementById("ef-person-email").value.trim();
     const phone = document.getElementById("ef-person-phone").value.trim();
     const notes = document.getElementById("ef-person-notes").value.trim();
@@ -2359,8 +2465,8 @@ function renderDirectoryNew() {
     saveBtn.disabled = true;
     saveBtn.textContent = "Saving...";
     try {
-      const newId = await API.addDirectoryEntry(CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, { name, role, department, email, phone, notes });
-      DIRECTORY.push({ id: newId, name, role, department, email, phone, notes, status: "draft" });
+      const newId = await API.addDirectoryEntry(CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, { name, role, department, email, phone, notes, reports_to: reportsTo });
+      DIRECTORY.push({ id: newId, name, role, department, email, phone, notes, reportsTo: reportsTo || null, status: "draft" });
       go("/directory");
     } catch (err) {
       saveBtn.disabled = false;
@@ -2402,6 +2508,12 @@ function renderDirectoryEdit(id) {
     <div class="edit-field"><label>Department</label>
       <select id="ef-person-department" class="ef-input">${deptOptions}</select>
     </div>
+    <div class="edit-field"><label>Reports to <span class="muted small">(optional)</span></label>
+      <select id="ef-person-reports-to" class="ef-input">
+        <option value="">No one / top of chart</option>
+        ${directoryManagerOptions(p.id, p.reportsTo)}
+      </select>
+    </div>
     <div class="edit-field"><label>Email <span class="muted small">(optional)</span></label><input id="ef-person-email" class="ef-input" value="${escapeAttr(p.email)}"></div>
     <div class="edit-field"><label>Phone <span class="muted small">(optional)</span></label><input id="ef-person-phone" class="ef-input" value="${escapeAttr(p.phone)}"></div>
     <div class="edit-field"><label>Notes <span class="muted small">(optional)</span></label><input id="ef-person-notes" class="ef-input" value="${escapeAttr(p.notes)}"></div>
@@ -2423,12 +2535,14 @@ function renderDirectoryEdit(id) {
     if (!name) { statusEl.textContent = "Name can't be empty."; return; }
     const role = document.getElementById("ef-person-role").value.trim();
     if (!role) { statusEl.textContent = "Role can't be empty."; return; }
+    const reportsTo = document.getElementById("ef-person-reports-to").value;
     const fields = {
       name, role,
       department: document.getElementById("ef-person-department").value,
       email: document.getElementById("ef-person-email").value.trim(),
       phone: document.getElementById("ef-person-phone").value.trim(),
       notes: document.getElementById("ef-person-notes").value.trim(),
+      reports_to: reportsTo,
     };
 
     saveBtn.disabled = true;
@@ -2443,7 +2557,11 @@ function renderDirectoryEdit(id) {
         go("/directory");
       } else {
         await API.editDirectoryEntry(p.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, fields);
-        Object.assign(p, fields);
+        Object.assign(p, {
+          name: fields.name, role: fields.role, department: fields.department,
+          email: fields.email, phone: fields.phone, notes: fields.notes,
+          reportsTo: fields.reports_to || null,
+        });
         go("/directory");
       }
     } catch (err) {
@@ -2520,6 +2638,7 @@ function mapDirectoryEntry(row) {
   return {
     id: row.id, name: row.name, role: row.role, department: row.department,
     email: row.email || "", phone: row.phone || "", notes: row.notes || "",
+    reportsTo: row.reports_to || null,
     status: row.status,
   };
 }
