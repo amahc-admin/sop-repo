@@ -34,21 +34,15 @@ insert into logins (id, name, code, passcode_hash, can_manage_sops) values
   ('admin', 'Admin', 'ADM', crypt('changeme-admin', gen_salt('bf')), true),
   ('member', 'Member', 'MEM', crypt('changeme-member', gen_salt('bf')), false);
 
--- departments is now a plain lookup of SOP category tags -- drop the
--- login-only columns and the general-employee row that lived here.
-delete from departments where id = 'general';
-alter table departments drop column if exists passcode_hash;
-alter table departments drop column if exists can_manage_sops;
--- No sensitive column is left on departments, so a plain full-table grant
--- (see bottom of file) replaces the old column-scoped one.
-
 -- ============================== sop_events / suggestions ==============
 -- These columns used to hold the acting DEPARTMENT's id/name/code. They
 -- now hold the acting LOGIN's id ('admin'/'member') and the person's last
 -- name instead. Historical rows keep their old department values as-is --
 -- harmless, since these are just attribution labels, not foreign keys
 -- anything depends on. The FK to departments(id) is dropped since login_id
--- no longer refers to a row in that table.
+-- no longer refers to a row in that table. This has to happen BEFORE the
+-- departments cleanup below, since suggestions.department_id still had a
+-- 'general' row referencing departments('general') until this FK is gone.
 alter table sop_events drop constraint if exists sop_events_department_id_fkey;
 alter table sop_events rename column department_id to login_id;
 alter table sop_events rename column department_name to actor_last_name;
@@ -60,6 +54,14 @@ alter table suggestions rename column department_id to login_id;
 alter table suggestions rename column department_name to last_name;
 alter table suggestions rename column approved_by_dept_id to approved_by_login_id;
 alter table suggestions rename column approved_by_dept_name to approved_by_last_name;
+
+-- departments is now a plain lookup of SOP category tags -- drop the
+-- login-only columns and the general-employee row that lived here.
+delete from departments where id = 'general';
+alter table departments drop column if exists passcode_hash;
+alter table departments drop column if exists can_manage_sops;
+-- No sensitive column is left on departments, so a plain full-table grant
+-- (see bottom of file) replaces the old column-scoped one.
 
 -- ============================== sop_edit_proposals ======================
 -- A Member's edit to an EXISTING SOP doesn't apply immediately -- it's
