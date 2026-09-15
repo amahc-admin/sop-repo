@@ -12,6 +12,10 @@
 -- when adding a SOP rather than implied by who's logged in.
 
 -- ============================== logins ==============================
+-- Safe to re-run: the Supabase SQL Editor commits each statement as it
+-- succeeds (not one atomic transaction for the whole pasted script), so a
+-- run that failed partway through can leave this table already created.
+drop table if exists logins cascade;
 create table logins (
   id text primary key,
   name text not null,
