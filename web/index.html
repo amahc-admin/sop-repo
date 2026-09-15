@@ -477,7 +477,7 @@ const DEPT_CODES = { operations: "OPS", sales: "SAL", cx: "CX", installations: "
 // approve/edit/add/disapprove a SOP -- see MANAGE_SOPS_IDS and the
 // matching can_manage_sops column/checks in the database.
 const GENERAL_EMPLOYEE_DEPT = { id: "general", name: "AMAHC Member", code: "GEN" };
-const VIEWER_DEPTS = [...DEPARTMENTS.map((d) => ({ id: d.id, name: d.name, code: DEPT_CODES[d.id] })), GENERAL_EMPLOYEE_DEPT];
+const VIEWER_DEPTS = [GENERAL_EMPLOYEE_DEPT, ...DEPARTMENTS.map((d) => ({ id: d.id, name: d.name, code: DEPT_CODES[d.id] }))];
 const MANAGE_SOPS_IDS = new Set(DEPARTMENTS.map((d) => d.id));
 // CURRENT_VIEWER also carries a `passcode` field -- the shared department
 // passcode, cached in this browser so writes don't ask for it every time.
