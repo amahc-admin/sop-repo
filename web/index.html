@@ -404,6 +404,21 @@
   .se-move-btn { padding: 8px 12px; line-height: 1; }
   .se-move-btn:disabled { opacity: 0.35; cursor: default; }
   .se-insert-after { align-self: center; font-size: 12.5px; padding: 6px 12px; opacity: 0.85; }
+
+  /* Two-column "+ Add row" editor (Tools & systems, Escalation, Forms) */
+  .kv-editor { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+  .kv-row { display: flex; gap: 8px; align-items: center; }
+  .kv-row .kv-a { flex: 1; font: 400 13.5px Barlow, sans-serif; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-primary); }
+  .kv-row .kv-b { flex: 1; font: 400 13.5px Barlow, sans-serif; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-primary); }
+  .kv-row .kv-remove { padding: 6px 12px; line-height: 1; }
+
+  /* Progressive disclosure for the less-common Add/Edit SOP fields */
+  .edit-details { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 16px 16px; margin-bottom: 20px; }
+  .edit-details summary { cursor: pointer; padding: 12px 0; font: 700 13px Barlow, sans-serif; color: var(--text-secondary); list-style: none; }
+  .edit-details summary::-webkit-details-marker { display: none; }
+  .edit-details summary::before { content: "\25b8"; display: inline-block; margin-right: 8px; transition: transform .12s; }
+  .edit-details[open] summary::before { transform: rotate(90deg); }
+  .edit-details .edit-field:last-child { margin-bottom: 0; }
   .edit-actions { display: flex; gap: 10px; margin-top: 24px; }
 
   /* ---- Run mode ---- */
@@ -1864,19 +1879,6 @@ function renderSopDetail(id) {
 }
 
 /* ============================== SOP EDIT ============================== */
-// A form entry is either a plain string (no linked document yet -- shows
-// "Not linked" on the SOP page) or {name, href} once a document URL is
-// attached. These two helpers convert between that and the "Name | URL"
-// textarea format so linking a document is just filling in the URL half.
-function formsToText(forms) {
-  return (forms || []).map((f) => (typeof f === "string" ? f : `${f.name}${f.href ? " | " + f.href : ""}`)).join("\n");
-}
-function textToForms(el) {
-  return el.value.split("\n").map((s) => s.trim()).filter(Boolean).map((line) => {
-    const [name, href] = line.split("|").map((s) => (s || "").trim());
-    return href ? { name, href } : name;
-  });
-}
 function fieldsFromSop(sop) {
   return {
     title: sop.title || "",
@@ -1890,6 +1892,62 @@ function fieldsFromSop(sop) {
     forms: sop.forms || [],
   };
 }
+// A simple "+ Add row" editor for two-column data (Tools & systems,
+// Escalation path, Forms) -- replaces the old "Name | Note, one per
+// line" textareas, which were an easy syntax to get wrong with no
+// feedback when it was. Each row is just two plain inputs.
+function kvRowHtml(aVal, bVal, aPh, bPh) {
+  return `<div class="kv-row">
+    <input class="kv-a" placeholder="${escapeAttr(aPh)}" value="${escapeAttr(aVal)}">
+    <input class="kv-b" placeholder="${escapeAttr(bPh)}" value="${escapeAttr(bVal)}">
+    <button type="button" class="btn btn-secondary kv-remove" title="Remove this row">&times;</button>
+  </div>`;
+}
+function kvEditorHtml(id, rows, aPh, bPh, addLabel) {
+  const body = (rows && rows.length ? rows : [{ a: "", b: "" }]).map((r) => kvRowHtml(r.a, r.b, aPh, bPh)).join("");
+  return `<div class="kv-editor" id="${id}">${body}</div>
+    <button type="button" class="btn btn-secondary kv-add-btn" data-target="${id}" data-a-ph="${escapeAttr(aPh)}" data-b-ph="${escapeAttr(bPh)}">${addLabel}</button>`;
+}
+// Call once after setting the form's innerHTML -- wires every kv-editor
+// on the page at once (there are up to 3: tools, escalation, forms).
+function wireKvEditors() {
+  document.querySelectorAll(".kv-remove").forEach((btn) => {
+    btn.addEventListener("click", () => btn.closest(".kv-row").remove());
+  });
+  document.querySelectorAll(".kv-add-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = document.getElementById(btn.dataset.target);
+      const holder = document.createElement("div");
+      holder.innerHTML = kvRowHtml("", "", btn.dataset.aPh, btn.dataset.bPh);
+      const row = holder.firstElementChild;
+      target.appendChild(row);
+      row.querySelector(".kv-remove").addEventListener("click", () => row.remove());
+      row.querySelector(".kv-a").focus();
+    });
+  });
+}
+function readKvEditor(id, keyA, keyB) {
+  return Array.from(document.querySelectorAll("#" + id + " .kv-row"))
+    .map((row) => ({ [keyA]: row.querySelector(".kv-a").value.trim(), [keyB]: row.querySelector(".kv-b").value.trim() }))
+    .filter((r) => r[keyA] || r[keyB]);
+}
+// Forms are special: a row with no URL stays a plain string (matches
+// the "not linked yet" display on the SOP page), one with a URL
+// becomes {name, href}.
+function readFormsKvEditor(id) {
+  return Array.from(document.querySelectorAll("#" + id + " .kv-row"))
+    .map((row) => {
+      const name = row.querySelector(".kv-a").value.trim();
+      const href = row.querySelector(".kv-b").value.trim();
+      if (!name && !href) return null;
+      return href ? { name, href } : name;
+    })
+    .filter(Boolean);
+}
+function toolsRows(toolsSystems) { return (toolsSystems || []).map((t) => ({ a: t.name || "", b: t.note || "" })); }
+function escalationRows(escalation) { return (escalation || []).map((e) => ({ a: e.when || "", b: e.action || "" })); }
+function formsKvRows(forms) { return (forms || []).map((f) => (typeof f === "string" ? { a: f, b: "" } : { a: f.name || "", b: f.href || "" })); }
+
 function stepEditBlockHtml(step, idx) {
   const st = step || { type: "info" };
   const itemsVal = (st.items || []).join("\n");
@@ -1951,9 +2009,7 @@ function renderSopEdit(id) {
 
     <div class="edit-field"><label>Title</label><input id="ef-title" class="ef-input" value="${escapeAttr(f.title)}"></div>
     <div class="edit-field"><label>Subtitle</label><input id="ef-subtitle" class="ef-input" value="${escapeAttr(f.subtitle)}"></div>
-    <div class="edit-field"><label>Never do this <span class="muted small">(optional)</span></label><input id="ef-never" class="ef-input" value="${escapeAttr(f.neverDoThis)}"></div>
     <div class="edit-field"><label>Before you start <span class="muted small">(one item per line)</span></label><textarea id="ef-before" rows="3">${escapeHtml(f.beforeYouStart.join("\n"))}</textarea></div>
-    <div class="edit-field"><label>Tools &amp; systems <span class="muted small">(Name | Note — one per line)</span></label><textarea id="ef-tools" rows="3">${escapeHtml(f.toolsSystems.map((t) => `${t.name} | ${t.note || ""}`).join("\n"))}</textarea></div>
 
     <div class="edit-field">
       <label>Steps</label>
@@ -1962,8 +2018,14 @@ function renderSopEdit(id) {
     </div>
 
     <div class="edit-field"><label>Success criteria <span class="muted small">(one per line)</span></label><textarea id="ef-success" rows="3">${escapeHtml(f.successCriteria.join("\n"))}</textarea></div>
-    <div class="edit-field"><label>Escalation path <span class="muted small">(When | Action — one per line)</span></label><textarea id="ef-escalation" rows="3">${escapeHtml(f.escalation.map((e) => `${e.when} | ${e.action}`).join("\n"))}</textarea></div>
-    <div class="edit-field"><label>Forms <span class="muted small">(Name | Link URL — one per line, URL optional)</span></label><textarea id="ef-forms" rows="2">${escapeHtml(formsToText(f.forms))}</textarea></div>
+
+    <details class="edit-details" open>
+      <summary>Additional details (optional)</summary>
+      <div class="edit-field"><label>Never do this</label><input id="ef-never" class="ef-input" value="${escapeAttr(f.neverDoThis)}"></div>
+      <div class="edit-field"><label>Tools &amp; systems</label>${kvEditorHtml("tools-editor", toolsRows(f.toolsSystems), "Tool or system name", "Note (optional)", "+ Add tool or system")}</div>
+      <div class="edit-field"><label>Escalation path</label>${kvEditorHtml("escalation-editor", escalationRows(f.escalation), "When", "Action", "+ Add escalation step")}</div>
+      <div class="edit-field"><label>Forms</label>${kvEditorHtml("forms-editor", formsKvRows(f.forms), "Form or document name", "Link URL (optional)", "+ Add form")}</div>
+    </details>
 
     <div class="edit-actions">
       <button class="btn btn-secondary" id="edit-cancel">Cancel</button>
@@ -1973,6 +2035,7 @@ function renderSopEdit(id) {
 
   document.getElementById("crumb-sop").addEventListener("click", () => go("/sop/" + sop.id));
   document.getElementById("edit-cancel").addEventListener("click", () => go("/sop/" + sop.id));
+  wireKvEditors();
 
   function updateStepMoveButtons() {
     const blocks = Array.from(document.querySelectorAll(".step-edit-block"));
@@ -2063,11 +2126,11 @@ function renderSopEdit(id) {
       title,
       subtitle: document.getElementById("ef-subtitle").value.trim(),
       beforeYouStart: linesOf(document.getElementById("ef-before")),
-      toolsSystems: pairsOf(document.getElementById("ef-tools"), "name", "note"),
+      toolsSystems: readKvEditor("tools-editor", "name", "note"),
       steps,
       successCriteria: linesOf(document.getElementById("ef-success")),
-      escalation: pairsOf(document.getElementById("ef-escalation"), "when", "action"),
-      forms: textToForms(document.getElementById("ef-forms")),
+      escalation: readKvEditor("escalation-editor", "when", "action"),
+      forms: readFormsKvEditor("forms-editor"),
     };
     const neverVal = document.getElementById("ef-never").value.trim();
     fields.neverDoThis = neverVal || undefined;
@@ -2137,9 +2200,7 @@ function renderSopNew() {
     </div>
     <div class="edit-field"><label>Title</label><input id="ef-title" class="ef-input" placeholder="e.g. Restocking the showroom fridge"></div>
     <div class="edit-field"><label>Subtitle</label><input id="ef-subtitle" class="ef-input" placeholder="One line describing what this SOP covers"></div>
-    <div class="edit-field"><label>Never do this <span class="muted small">(optional)</span></label><input id="ef-never" class="ef-input"></div>
     <div class="edit-field"><label>Before you start <span class="muted small">(one item per line)</span></label><textarea id="ef-before" rows="3"></textarea></div>
-    <div class="edit-field"><label>Tools &amp; systems <span class="muted small">(Name | Note — one per line)</span></label><textarea id="ef-tools" rows="3"></textarea></div>
 
     <div class="edit-field">
       <label>Steps</label>
@@ -2148,8 +2209,14 @@ function renderSopNew() {
     </div>
 
     <div class="edit-field"><label>Success criteria <span class="muted small">(one per line)</span></label><textarea id="ef-success" rows="3"></textarea></div>
-    <div class="edit-field"><label>Escalation path <span class="muted small">(When | Action — one per line)</span></label><textarea id="ef-escalation" rows="3"></textarea></div>
-    <div class="edit-field"><label>Forms <span class="muted small">(Name | Link URL — one per line, URL optional)</span></label><textarea id="ef-forms" rows="2"></textarea></div>
+
+    <details class="edit-details">
+      <summary>Additional details (optional)</summary>
+      <div class="edit-field"><label>Never do this</label><input id="ef-never" class="ef-input"></div>
+      <div class="edit-field"><label>Tools &amp; systems</label>${kvEditorHtml("tools-editor", [], "Tool or system name", "Note (optional)", "+ Add tool or system")}</div>
+      <div class="edit-field"><label>Escalation path</label>${kvEditorHtml("escalation-editor", [], "When", "Action", "+ Add escalation step")}</div>
+      <div class="edit-field"><label>Forms</label>${kvEditorHtml("forms-editor", [], "Form or document name", "Link URL (optional)", "+ Add form")}</div>
+    </details>
 
     <div class="edit-actions">
       <button class="btn btn-secondary" id="edit-cancel">Cancel</button>
@@ -2159,6 +2226,7 @@ function renderSopNew() {
 
   document.getElementById("crumb-lib3").addEventListener("click", () => go("/library"));
   document.getElementById("edit-cancel").addEventListener("click", () => go("/library"));
+  wireKvEditors();
 
   function updateStepMoveButtons() {
     const blocks = Array.from(document.querySelectorAll(".step-edit-block"));
@@ -2251,10 +2319,10 @@ function renderSopNew() {
     const addedByInitials = initialsFrom(addedBy);
     const subtitle = document.getElementById("ef-subtitle").value.trim();
     const beforeYouStart = linesOf(document.getElementById("ef-before"));
-    const toolsSystems = pairsOf(document.getElementById("ef-tools"), "name", "note");
-    const forms = textToForms(document.getElementById("ef-forms"));
+    const toolsSystems = readKvEditor("tools-editor", "name", "note");
+    const forms = readFormsKvEditor("forms-editor");
     const successCriteria = linesOf(document.getElementById("ef-success"));
-    const escalation = pairsOf(document.getElementById("ef-escalation"), "when", "action");
+    const escalation = readKvEditor("escalation-editor", "when", "action");
     const neverVal = document.getElementById("ef-never").value.trim();
 
     saveBtn.disabled = true;
