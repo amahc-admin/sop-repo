@@ -337,6 +337,7 @@
 
   /* Directory org chart: a nested list where each branch is indented and
      connected to its manager with a simple CSS line, no chart library. */
+  .org-tree-wrap { display: flex; justify-content: center; overflow-x: auto; }
   .org-tree, .org-branch { list-style: none; margin: 0; padding: 0; }
   .org-tree { padding-bottom: 8px; }
   .org-tree li { padding: 10px 0; }
@@ -346,12 +347,14 @@
   .org-card { display: inline-flex; flex-direction: column; gap: 2px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 14px; min-width: 200px; max-width: 320px; text-align: left; }
   .org-card .org-name { font: 700 14px Barlow, sans-serif; color: var(--text-primary); }
 
-  /* Each node is just a circular photo (initials if none) -- hovering
-     or tapping it reveals an .org-card with the full details. */
-  .person-node { position: relative; display: inline-block; }
-  .person-avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--card-bg); border: 2px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font: 700 16px Barlow, sans-serif; color: var(--text-secondary); overflow: hidden; cursor: pointer; }
+  /* Each node is a circular photo (initials if none) with its role
+     underneath -- hovering or tapping it reveals an .org-card with the
+     full details (name, department, contact, notes). */
+  .person-node { position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
+  .person-avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--card-bg); border: 2px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font: 700 16px Barlow, sans-serif; color: var(--text-secondary); overflow: hidden; cursor: pointer; flex: none; }
   .person-avatar img { width: 100%; height: 100%; object-fit: cover; }
-  .person-tooltip { display: none; position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 30; }
+  .person-role-label { font: 600 11px Barlow, sans-serif; color: var(--text-secondary); text-align: center; max-width: 92px; line-height: 1.25; }
+  .person-tooltip { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); z-index: 30; }
   .person-node:hover .person-tooltip, .person-node.open .person-tooltip { display: block; }
 
   /* ---- SOP edit form ---- */
@@ -2339,6 +2342,7 @@ function renderOrgNode(p, childrenOf) {
   return `<li>
     <div class="person-node" data-person-node="${p.id}">
       <div class="person-avatar">${avatarInner}</div>
+      <div class="person-role-label">${escapeHtml(p.role)}</div>
       <div class="person-tooltip">
         <div class="org-card">
           <div class="org-name">${escapeHtml(p.name)} ${p.status === "draft" ? `<span class="badge badge-draft">Pending</span>` : ""}</div>
@@ -2391,7 +2395,7 @@ function renderDirectory() {
   } else {
     const { roots, childrenOf } = buildDirectoryTree(DIRECTORY);
     bodyHtml = roots.length
-      ? `<ul class="org-tree">${roots.map((r) => renderOrgNode(r, childrenOf)).join("")}</ul>`
+      ? `<div class="org-tree-wrap"><ul class="org-tree">${roots.map((r) => renderOrgNode(r, childrenOf)).join("")}</ul></div>`
       : `<div class="empty-state">No one in the directory yet.</div>`;
   }
 
