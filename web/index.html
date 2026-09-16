@@ -401,6 +401,9 @@
   .se-body, .se-items, .se-options { width: 100%; font: 400 13.5px/1.5 Barlow, sans-serif; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-primary); resize: vertical; }
   .se-tags { display: flex; gap: 16px; }
   .se-tags label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); cursor: pointer; }
+  .se-move-btn { padding: 8px 12px; line-height: 1; }
+  .se-move-btn:disabled { opacity: 0.35; cursor: default; }
+  .se-insert-after { align-self: center; font-size: 12.5px; padding: 6px 12px; opacity: 0.85; }
   .edit-actions { display: flex; gap: 10px; margin-top: 24px; }
 
   /* ---- Run mode ---- */
@@ -1861,6 +1864,8 @@ function stepEditBlockHtml(step, idx) {
         <option value="checklist" ${st.type === "checklist" ? "selected" : ""}>Checklist</option>
         <option value="decision" ${st.type === "decision" ? "selected" : ""}>Decision</option>
       </select>
+      <button type="button" class="btn btn-secondary se-move-btn se-move-up" title="Move step up">&uarr;</button>
+      <button type="button" class="btn btn-secondary se-move-btn se-move-down" title="Move step down">&darr;</button>
       <button type="button" class="btn btn-secondary se-remove">Remove step</button>
     </div>
     <input class="se-title" placeholder="Step title" value="${escapeAttr(st.title || "")}">
@@ -1875,6 +1880,7 @@ function stepEditBlockHtml(step, idx) {
       <label><input type="checkbox" class="se-tag-approval" ${tags.includes("approval") ? "checked" : ""}> Approval required</label>
       <label><input type="checkbox" class="se-tag-confidential" ${tags.includes("confidential") ? "checked" : ""}> Confidential</label>
     </div>
+    <button type="button" class="btn btn-secondary se-insert-after">+ Insert step below</button>
   </div>`;
 }
 function renderSopEdit(id) {
@@ -1929,6 +1935,13 @@ function renderSopEdit(id) {
   document.getElementById("crumb-sop").addEventListener("click", () => go("/sop/" + sop.id));
   document.getElementById("edit-cancel").addEventListener("click", () => go("/sop/" + sop.id));
 
+  function updateStepMoveButtons() {
+    const blocks = Array.from(document.querySelectorAll(".step-edit-block"));
+    blocks.forEach((block, i) => {
+      block.querySelector(".se-move-up").disabled = i === 0;
+      block.querySelector(".se-move-down").disabled = i === blocks.length - 1;
+    });
+  }
   function bindStepBlock(block) {
     const typeSel = block.querySelector(".se-type");
     const checklistWrap = block.querySelector(".se-checklist-wrap");
@@ -1937,9 +1950,33 @@ function renderSopEdit(id) {
       checklistWrap.style.display = typeSel.value === "checklist" ? "block" : "none";
       decisionWrap.style.display = typeSel.value === "decision" ? "block" : "none";
     });
-    block.querySelector(".se-remove").addEventListener("click", () => block.remove());
+    block.querySelector(".se-remove").addEventListener("click", () => { block.remove(); updateStepMoveButtons(); });
+    block.querySelector(".se-move-up").addEventListener("click", () => {
+      const prev = block.previousElementSibling;
+      if (!prev) return;
+      block.parentNode.insertBefore(block, prev);
+      updateStepMoveButtons();
+      block.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    block.querySelector(".se-move-down").addEventListener("click", () => {
+      const next = block.nextElementSibling;
+      if (!next) return;
+      block.parentNode.insertBefore(next, block);
+      updateStepMoveButtons();
+      block.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    block.querySelector(".se-insert-after").addEventListener("click", () => {
+      const holder = document.createElement("div");
+      holder.innerHTML = stepEditBlockHtml({ type: "info" }, 0);
+      const newBlock = holder.firstElementChild;
+      block.insertAdjacentElement("afterend", newBlock);
+      bindStepBlock(newBlock);
+      updateStepMoveButtons();
+      newBlock.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   }
   document.querySelectorAll(".step-edit-block").forEach(bindStepBlock);
+  updateStepMoveButtons();
   document.getElementById("add-step-btn").addEventListener("click", () => {
     const wrap = document.getElementById("steps-editor");
     const holder = document.createElement("div");
@@ -1947,6 +1984,7 @@ function renderSopEdit(id) {
     const block = holder.firstElementChild;
     wrap.appendChild(block);
     bindStepBlock(block);
+    updateStepMoveButtons();
     block.scrollIntoView({ behavior: "smooth", block: "center" });
   });
 
@@ -2083,6 +2121,13 @@ function renderSopNew() {
   document.getElementById("crumb-lib3").addEventListener("click", () => go("/library"));
   document.getElementById("edit-cancel").addEventListener("click", () => go("/library"));
 
+  function updateStepMoveButtons() {
+    const blocks = Array.from(document.querySelectorAll(".step-edit-block"));
+    blocks.forEach((block, i) => {
+      block.querySelector(".se-move-up").disabled = i === 0;
+      block.querySelector(".se-move-down").disabled = i === blocks.length - 1;
+    });
+  }
   function bindStepBlock(block) {
     const typeSel = block.querySelector(".se-type");
     const checklistWrap = block.querySelector(".se-checklist-wrap");
@@ -2091,9 +2136,33 @@ function renderSopNew() {
       checklistWrap.style.display = typeSel.value === "checklist" ? "block" : "none";
       decisionWrap.style.display = typeSel.value === "decision" ? "block" : "none";
     });
-    block.querySelector(".se-remove").addEventListener("click", () => block.remove());
+    block.querySelector(".se-remove").addEventListener("click", () => { block.remove(); updateStepMoveButtons(); });
+    block.querySelector(".se-move-up").addEventListener("click", () => {
+      const prev = block.previousElementSibling;
+      if (!prev) return;
+      block.parentNode.insertBefore(block, prev);
+      updateStepMoveButtons();
+      block.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    block.querySelector(".se-move-down").addEventListener("click", () => {
+      const next = block.nextElementSibling;
+      if (!next) return;
+      block.parentNode.insertBefore(next, block);
+      updateStepMoveButtons();
+      block.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    block.querySelector(".se-insert-after").addEventListener("click", () => {
+      const holder = document.createElement("div");
+      holder.innerHTML = stepEditBlockHtml({ type: "info" }, 0);
+      const newBlock = holder.firstElementChild;
+      block.insertAdjacentElement("afterend", newBlock);
+      bindStepBlock(newBlock);
+      updateStepMoveButtons();
+      newBlock.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   }
   document.querySelectorAll(".step-edit-block").forEach(bindStepBlock);
+  updateStepMoveButtons();
   document.getElementById("add-step-btn").addEventListener("click", () => {
     const wrap = document.getElementById("steps-editor");
     const holder = document.createElement("div");
@@ -2101,6 +2170,7 @@ function renderSopNew() {
     const block = holder.firstElementChild;
     wrap.appendChild(block);
     bindStepBlock(block);
+    updateStepMoveButtons();
     block.scrollIntoView({ behavior: "smooth", block: "center" });
   });
 
