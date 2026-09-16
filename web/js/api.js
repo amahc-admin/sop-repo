@@ -100,6 +100,9 @@ const API = (() => {
     approveSuggestion(suggestionId, loginId, passcode, lastName) {
       return rpc("approve_suggestion", { p_suggestion_id: suggestionId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
     },
+    deleteSuggestion(suggestionId, loginId, passcode, lastName) {
+      return rpc("delete_suggestion", { p_suggestion_id: suggestionId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName });
+    },
     proposeSopEdit(sopId, loginId, passcode, lastName, fields) {
       return rpc("propose_sop_edit", { p_sop_id: sopId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_fields: fields });
     },

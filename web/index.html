@@ -578,14 +578,29 @@ function suggestionsFor(sopId) {
 function suggestionStatus(s) {
   return s.status || "pending";
 }
+// Admin can delete any suggestion; otherwise only whoever's cached
+// last name matches the one on the suggestion -- same soft-identity
+// model as the rest of the app (last name is attribution, not a real
+// login, so this is a UI nicety backed by a matching server-side check
+// in delete_suggestion, not a hard security boundary).
+function canDeleteSuggestion(s) {
+  if (!CURRENT_VIEWER) return false;
+  return isAdmin(CURRENT_VIEWER) || CURRENT_VIEWER.lastName === s.lastName;
+}
+function suggestionItemHtml(s) {
+  const deleteBtn = canDeleteSuggestion(s)
+    ? `<div class="row" style="justify-content:flex-end;margin-top:6px"><button class="btn btn-danger" data-delete-suggestion="${s.id}">Delete</button></div>`
+    : "";
+  return `<div class="suggestion-item">
+    <div class="suggestion-meta"><span class="suggestion-dept">${escapeHtml(s.lastName)} (${s.loginName})</span><span class="suggestion-status suggestion-status-${suggestionStatus(s)}">${suggestionStatus(s) === "approved" ? "Approved" : "Pending"}</span><span class="suggestion-date">${new Date(s.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span></div>
+    <p class="suggestion-text">${escapeHtml(s.text)}</p>
+    ${deleteBtn}
+  </div>`;
+}
 function suggestionsSectionHtml(sop) {
   const list = suggestionsFor(sop.id);
   const items = list.length
-    ? list.map((s) => `
-      <div class="suggestion-item">
-        <div class="suggestion-meta"><span class="suggestion-dept">${escapeHtml(s.lastName)} (${s.loginName})</span><span class="suggestion-status suggestion-status-${suggestionStatus(s)}">${suggestionStatus(s) === "approved" ? "Approved" : "Pending"}</span><span class="suggestion-date">${new Date(s.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span></div>
-        <p class="suggestion-text">${escapeHtml(s.text)}</p>
-      </div>`).join("")
+    ? list.map(suggestionItemHtml).join("")
     : `<p class="muted small">No suggestions yet. Be the first to flag an improvement.</p>`;
   const prompt = CURRENT_VIEWER
     ? `<div class="suggestion-form">
@@ -606,9 +621,36 @@ function suggestionsSectionHtml(sop) {
     ${prompt}
   </div>`;
 }
+function wireDeleteSuggestionButtons(afterDelete) {
+  document.querySelectorAll("[data-delete-suggestion]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!CURRENT_VIEWER) return;
+      const ok = confirm("Delete this suggestion?");
+      if (!ok) return;
+      btn.disabled = true;
+      btn.textContent = "Deleting...";
+      try {
+        await API.deleteSuggestion(btn.dataset.deleteSuggestion, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        SUGGESTIONS = SUGGESTIONS.filter((s) => s.id !== btn.dataset.deleteSuggestion);
+        afterDelete();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Delete";
+        alert("Couldn't delete: " + err.message);
+      }
+    });
+  });
+}
 function wireSuggestionsSection(sop) {
+  function refreshSuggestionList() {
+    document.getElementById("suggestion-list").innerHTML = suggestionsFor(sop.id).length
+      ? suggestionsFor(sop.id).map(suggestionItemHtml).join("")
+      : `<p class="muted small">No suggestions yet. Be the first to flag an improvement.</p>`;
+    wireDeleteSuggestionButtons(refreshSuggestionList);
+  }
   const pickBtn = document.getElementById("suggestion-pick-viewer");
   if (pickBtn) pickBtn.addEventListener("click", (e) => { e.stopPropagation(); openViewerMenu(); });
+  wireDeleteSuggestionButtons(refreshSuggestionList);
   const submitBtn = document.getElementById("suggestion-submit");
   if (!submitBtn) return;
   submitBtn.addEventListener("click", async (e) => {
@@ -622,13 +664,7 @@ function wireSuggestionsSection(sop) {
     try {
       const id = await API.addSuggestion(sop.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, text);
       SUGGESTIONS.push({ id, sopId: sop.id, loginId: CURRENT_VIEWER.id, loginName: CURRENT_VIEWER.name, lastName: CURRENT_VIEWER.lastName, text, ts: Date.now(), status: "pending" });
-      document.getElementById("suggestion-list").innerHTML = suggestionsFor(sop.id).length
-        ? suggestionsFor(sop.id).map((s) => `
-          <div class="suggestion-item">
-            <div class="suggestion-meta"><span class="suggestion-dept">${escapeHtml(s.lastName)} (${s.loginName})</span><span class="suggestion-status suggestion-status-${suggestionStatus(s)}">${suggestionStatus(s) === "approved" ? "Approved" : "Pending"}</span><span class="suggestion-date">${new Date(s.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span></div>
-            <p class="suggestion-text">${escapeHtml(s.text)}</p>
-          </div>`).join("")
-        : "";
+      refreshSuggestionList();
       input.value = "";
       status.textContent = "Saved to the shared board.";
     } catch (err) {
@@ -1215,6 +1251,7 @@ function renderSuggestionsPage() {
         const targetHtml = sop
           ? `<div class="target" data-sop="${sop.id}">${sop.title}${sopDept ? " &middot; " + sopDept.name : ""}</div>`
           : `<div class="target">Unknown SOP</div>`;
+        const deleteBtn = canDeleteSuggestion(s) ? `<button class="btn btn-danger" data-delete-suggestion="${s.id}">Delete</button>` : "";
         return `<div class="review-item">
           <div class="suggestion-meta">
             <span class="suggestion-dept">${escapeHtml(s.lastName)} (${s.loginName})</span>
@@ -1223,7 +1260,7 @@ function renderSuggestionsPage() {
           </div>
           ${targetHtml}
           <p class="suggestion-text">${escapeHtml(s.text)}</p>
-          <div class="review-footer">${actionHtml}</div>
+          <div class="review-footer">${actionHtml}${deleteBtn}</div>
         </div>`;
       }).join("")
     : `<div class="empty-state">No ${reviewFilter === "all" ? "" : reviewFilter + " "}suggestions yet.</div>`;
@@ -1262,6 +1299,7 @@ function renderSuggestionsPage() {
       }
     });
   });
+  wireDeleteSuggestionButtons(() => renderSuggestionsPage());
   wireEditProposalsSection();
   wireDirectoryProposalsSection();
 }
