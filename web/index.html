@@ -1371,8 +1371,12 @@ function diffProposalFields(sop, fields) {
   return out;
 }
 let editProposalFilter = "pending";
-function editProposalsSectionHtml() {
-  const all = EDIT_PROPOSALS.slice().sort((a, b) => b.ts - a.ts);
+// deptFilterSet (a Set of department ids, or falsy for no filtering) scopes
+// this down to proposals on SOPs tagged with one of those departments --
+// used by renderQueue()'s "my teams" view. The Suggestions page calls this
+// with no argument and sees everything, same as before.
+function editProposalsSectionHtml(deptFilterSet) {
+  const all = (deptFilterSet ? EDIT_PROPOSALS.filter((p) => { const sop = getSop(p.sopId); return sop && deptFilterSet.has(sop.department); }) : EDIT_PROPOSALS).slice().sort((a, b) => b.ts - a.ts);
   const counts = {
     all: all.length,
     pending: all.filter((p) => p.status === "pending").length,
@@ -1515,8 +1519,10 @@ function diffDirectoryProposalFields(entry, fields) {
   return out;
 }
 let directoryProposalFilter = "pending";
-function directoryProposalsSectionHtml() {
-  const all = DIRECTORY_EDIT_PROPOSALS.slice().sort((a, b) => b.ts - a.ts);
+// deptFilterSet: see editProposalsSectionHtml above -- same idea, scoped by
+// the directory entry's own department instead of a SOP's.
+function directoryProposalsSectionHtml(deptFilterSet) {
+  const all = (deptFilterSet ? DIRECTORY_EDIT_PROPOSALS.filter((p) => { const entry = DIRECTORY.find((x) => x.id === p.entryId); return entry && deptFilterSet.has(entry.department); }) : DIRECTORY_EDIT_PROPOSALS).slice().sort((a, b) => b.ts - a.ts);
   const counts = {
     all: all.length,
     pending: all.filter((p) => p.status === "pending").length,
@@ -1639,6 +1645,48 @@ function wireDirectoryProposalsSection(refresh) {
 }
 
 /* ============================== MY QUEUE (admin approvals) ============================== */
+// Matches the last name typed at login against the Directory (same
+// soft-identity model as everywhere else -- never verified, just a
+// convenience match) so My Queue can scope itself to "my teams" by
+// default. If nobody in the Directory shares that last name, or the
+// admin picks "Show everything", no filtering happens -- this never
+// silently hides anything, it's purely a default declutter.
+function findDirectoryPersonByLastName(lastName) {
+  const norm = (lastName || "").trim().toLowerCase();
+  if (!norm) return [];
+  return DIRECTORY.filter((p) => {
+    const parts = (p.name || "").trim().split(/\s+/);
+    return (parts[parts.length - 1] || "").toLowerCase() === norm;
+  });
+}
+function directoryDescendants(personId) {
+  const out = [];
+  const seen = new Set();
+  const stack = DIRECTORY.filter((p) => p.reportsTo === personId);
+  while (stack.length) {
+    const p = stack.pop();
+    if (seen.has(p.id)) continue;
+    seen.add(p.id);
+    out.push(p);
+    DIRECTORY.filter((c) => c.reportsTo === p.id).forEach((c) => stack.push(c));
+  }
+  return out;
+}
+// Returns a Set of department ids this person (matched by last name)
+// manages -- their own department plus every direct/indirect report's --
+// or null if their last name doesn't match anyone in the Directory.
+function myManagedDepartments(lastName) {
+  const matches = findDirectoryPersonByLastName(lastName);
+  if (!matches.length) return null;
+  const deptIds = new Set();
+  matches.forEach((person) => {
+    deptIds.add(person.department);
+    directoryDescendants(person.id).forEach((d) => deptIds.add(d.department));
+  });
+  return deptIds;
+}
+let queueShowAll = false;
+
 // A single Admin-facing dashboard of everything waiting on a decision:
 // new SOPs (incl. uploaded documents), new directory entries, and the
 // edit-proposal sections already built for the Suggestions page (reused
@@ -1662,7 +1710,20 @@ function renderQueue() {
     return;
   }
 
-  const draftSops = SOPS.filter((s) => s.status === "draft").sort((a, b) => (b.id > a.id ? 1 : -1));
+  const myDepts = myManagedDepartments(CURRENT_VIEWER.lastName);
+  const effectiveFilter = myDepts && !queueShowAll ? myDepts : null;
+
+  let scopeNoteHtml = "";
+  if (myDepts) {
+    const deptNames = Array.from(myDepts).map((id) => (getDepartment(id) || {}).name || id).join(", ");
+    scopeNoteHtml = effectiveFilter
+      ? `<p class="muted small" style="margin-bottom:20px">Showing pending items for your teams: <strong>${escapeHtml(deptNames)}</strong> (matched to &ldquo;${escapeHtml(CURRENT_VIEWER.lastName)}&rdquo; in the Directory) &middot; <a id="queue-show-all" style="text-decoration:underline;cursor:pointer">Show everything</a></p>`
+      : `<p class="muted small" style="margin-bottom:20px">Showing everything &middot; <a id="queue-show-mine" style="text-decoration:underline;cursor:pointer">Show only my teams (${escapeHtml(deptNames)})</a></p>`;
+  } else {
+    scopeNoteHtml = `<p class="muted small" style="margin-bottom:20px">Couldn't match &ldquo;${escapeHtml(CURRENT_VIEWER.lastName)}&rdquo; to anyone in the Directory, so this shows everything.</p>`;
+  }
+
+  const draftSops = SOPS.filter((s) => s.status === "draft" && (!effectiveFilter || effectiveFilter.has(s.department))).sort((a, b) => (b.id > a.id ? 1 : -1));
   const sopRows = draftSops.length
     ? draftSops.map((sop) => {
         const dept = getDepartment(sop.department);
@@ -1681,7 +1742,7 @@ function renderQueue() {
       }).join("")
     : `<div class="empty-state">No new SOPs waiting on approval.</div>`;
 
-  const draftPeople = DIRECTORY.filter((p) => p.status === "draft").sort((a, b) => (b.id > a.id ? 1 : -1));
+  const draftPeople = DIRECTORY.filter((p) => p.status === "draft" && (!effectiveFilter || effectiveFilter.has(p.department))).sort((a, b) => (b.id > a.id ? 1 : -1));
   const peopleRows = draftPeople.length
     ? draftPeople.map((p) => {
         const dept = getDepartment(p.department);
@@ -1699,13 +1760,19 @@ function renderQueue() {
     : `<div class="empty-state">No new directory entries waiting on approval.</div>`;
 
   pageBody.innerHTML = `
-    <h1 style="margin-bottom:20px">My Queue</h1>
+    <h1 style="margin-bottom:6px">My Queue</h1>
+    ${scopeNoteHtml}
     <div class="library-header"><h2>New SOPs awaiting approval (${draftSops.length})</h2></div>
     <div id="queue-sop-list">${sopRows}</div>
     <div class="library-header" style="margin-top:32px"><h2>New directory entries awaiting approval (${draftPeople.length})</h2></div>
     <div id="queue-person-list">${peopleRows}</div>
-    <div id="edit-proposals-section" style="margin-top:32px">${editProposalsSectionHtml()}</div>
-    <div id="directory-proposals-section" style="margin-top:32px">${directoryProposalsSectionHtml()}</div>`;
+    <div id="edit-proposals-section" style="margin-top:32px">${editProposalsSectionHtml(effectiveFilter)}</div>
+    <div id="directory-proposals-section" style="margin-top:32px">${directoryProposalsSectionHtml(effectiveFilter)}</div>`;
+
+  const showAllLink = document.getElementById("queue-show-all");
+  if (showAllLink) showAllLink.addEventListener("click", () => { queueShowAll = true; renderQueue(); });
+  const showMineLink = document.getElementById("queue-show-mine");
+  if (showMineLink) showMineLink.addEventListener("click", () => { queueShowAll = false; renderQueue(); });
 
   document.querySelectorAll("#queue-sop-list .target[data-sop]").forEach((el) => {
     el.addEventListener("click", () => go("/sop/" + el.dataset.sop));
