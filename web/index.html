@@ -341,7 +341,15 @@
      classic "pure CSS org chart" recipe: a branch's own ::before draws
      the vertical drop from the parent, and each child li's ::before/
      ::after draw the horizontal half-lines that meet its siblings. */
-  .org-tree-wrap { display: flex; justify-content: center; align-items: flex-start; overflow-x: auto; min-height: 50vh; padding: 40px 0; }
+  /* justify-content: center clips the start side of the content when it
+     overflows a scrollable flex container -- most browsers only let you
+     scroll "forward" past centered content, not into the side that got
+     pushed left of the initial scroll position. "safe center" (with
+     plain "center" first, for browsers that don't know the keyword)
+     falls back to start-alignment once it overflows so it's all
+     reachable by scrolling, which matters once zoom/a wide tree pushes
+     this past the visible width. */
+  .org-tree-wrap { display: flex; justify-content: center; justify-content: safe center; align-items: flex-start; overflow-x: auto; min-height: 50vh; padding: 40px 0; }
   .org-tree { display: flex; justify-content: center; gap: 28px; list-style: none; margin: 0; padding: 0; }
   .org-tree > li { display: flex; flex-direction: column; align-items: center; }
 
