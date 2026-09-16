@@ -264,6 +264,10 @@
   .blackout-banner .tag { display: block; font: 700 11px "Barlow Condensed", sans-serif; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
   .blackout-banner ul { margin: 0; padding-left: 18px; }
   .blackout-banner li { font: 600 14px/1.5 Barlow, sans-serif; margin-bottom: 4px; }
+  .document-embed { width: 100%; height: 70vh; min-height: 420px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+  .document-embed-img { width: 100%; max-height: 70vh; object-fit: contain; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+  .document-open-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 18px; background: var(--card-bg); font: 600 14px Barlow, sans-serif; }
+  .doc-download-link { display: inline-block; margin-top: 8px; font: 600 12.5px Barlow, sans-serif; text-decoration: underline; cursor: pointer; color: var(--text-secondary); }
   .blackout-banner .flag-note { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(138,75,0,.2); font: 600 13px/1.5 Barlow, sans-serif; }
   .section { margin-bottom: 32px; scroll-margin-top: 20px; }
   .section h2 { font: 600 19px Barlow, sans-serif; margin-bottom: 14px; }
@@ -1915,10 +1919,36 @@ function renderSopDetail(id) {
   if (sop.neverDoThis) neverHtml = `<div class="never-banner"><span class="tag">Never do this</span><span>${sop.neverDoThis}</span></div>`;
 
   let docPendingHtml = "";
-  if (sop.sourceDocumentUrl && sop.status === "draft") {
+  if (sop.sourceDocumentUrl && sop.status !== "current") {
     docPendingHtml = `<div class="never-banner" id="section-doc-pending">
-      <span class="tag">Uploaded document &mdash; pending conversion</span>
-      <span>This SOP was submitted as a document${sop.sourceDocumentName ? ` (${escapeHtml(sop.sourceDocumentName)})` : ""} and is waiting for an Admin to convert it into a full SOP page. <a href="${sop.sourceDocumentUrl}" target="_blank" rel="noopener">View the original document</a></span>
+      <span class="tag">Uploaded document &mdash; awaiting review</span>
+      <span>This SOP was submitted as a document${sop.sourceDocumentName ? ` (${escapeHtml(sop.sourceDocumentName)})` : ""} and is waiting for an Admin to review it. It can stay hosted as this document, or be reformatted into the standard step-by-step layout.</span>
+    </div>`;
+  }
+
+  // A "placeholder" step (see add_sop_document / 0009+0010 migrations) is
+  // just there to satisfy "at least one step" while a document is the
+  // real content -- excluded from the Steps section so it doesn't show
+  // up as a fake "Step 1". If an Admin later writes real steps, those
+  // replace it entirely (editSop overwrites the whole steps array).
+  const realSteps = (sop.steps || []).filter((s) => !s.placeholder);
+
+  let documentViewHtml = "";
+  if (sop.sourceDocumentUrl) {
+    const ext = (sop.sourceDocumentName || sop.sourceDocumentUrl).split(".").pop().toLowerCase();
+    const isPdf = ext === "pdf";
+    const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
+    const embedHtml = isPdf
+      ? `<iframe src="${sop.sourceDocumentUrl}" class="document-embed" title="${escapeAttr(sop.sourceDocumentName || "Document")}"></iframe>`
+      : isImage
+      ? `<img src="${sop.sourceDocumentUrl}" class="document-embed-img" alt="${escapeAttr(sop.sourceDocumentName || "Document")}">`
+      : `<div class="document-open-card"><span>&#128196; ${escapeHtml(sop.sourceDocumentName || "Document")}</span><a class="btn btn-primary" href="${sop.sourceDocumentUrl}" target="_blank" rel="noopener">Open document</a></div>`;
+    const placeholderNote = sop.steps.find((s) => s.placeholder);
+    documentViewHtml = `<div class="section" id="section-document">
+      <h2>Document</h2>
+      ${placeholderNote && placeholderNote.body ? `<p class="muted small" style="margin-bottom:10px">${escapeHtml(placeholderNote.body)}</p>` : ""}
+      ${embedHtml}
+      ${!isPdf && !isImage ? "" : `<a class="doc-download-link" href="${sop.sourceDocumentUrl}" target="_blank" rel="noopener">Open in a new tab</a>`}
     </div>`;
   }
 
@@ -1949,7 +1979,7 @@ function renderSopDetail(id) {
   const typeLabel = { info: "", checklist: "Checklist", decision: "Decision point" };
   const tagChip = { approval: `<span class="tag-chip tag-approval">Approval required</span>`, confidential: `<span class="tag-chip tag-confidential">&#128274; Confidential</span>` };
   let lastPhase = null;
-  const stepsHtml = sop.steps.map((step, i) => {
+  const stepsHtml = realSteps.map((step, i) => {
     let phaseHtml = "";
     if (step.phase && step.phase !== lastPhase) { phaseHtml = `<div class="phase-heading">${step.phase}</div>`; lastPhase = step.phase; }
     let extra = "";
@@ -1989,9 +2019,10 @@ function renderSopDetail(id) {
 
   const toc = [
     sop.blackoutPeriods && sop.blackoutPeriods.length ? `<li><a href="#section-blackout">Blackout periods</a></li>` : "",
+    sop.sourceDocumentUrl ? `<li><a href="#section-document">Document</a></li>` : "",
     sop.beforeYouStart && sop.beforeYouStart.length ? `<li><a href="#section-before">Before you start</a></li>` : "",
     sop.toolsSystems && sop.toolsSystems.length ? `<li><a href="#section-tools">Tools &amp; systems</a></li>` : "",
-    `<li><a href="#section-steps">Steps</a></li>`,
+    realSteps.length ? `<li><a href="#section-steps">Steps</a></li>` : "",
     sop.successCriteria && sop.successCriteria.length ? `<li><a href="#section-success">Success criteria</a></li>` : "",
     sop.escalation && sop.escalation.length ? `<li><a href="#section-escalation">Escalation path</a></li>` : "",
     sop.forms && sop.forms.length ? `<li><a href="#section-forms">Forms</a></li>` : "",
@@ -2030,7 +2061,11 @@ function renderSopDetail(id) {
         ${approveHtml}
         ${editHtml}
         ${disapproveHtml}
-        <a class="btn btn-primary" id="run-btn">Run this SOP</a>
+        ${realSteps.length
+          ? `<a class="btn btn-primary" id="run-btn">Run this SOP</a>`
+          : sop.sourceDocumentUrl
+          ? `<a class="btn btn-primary" href="${sop.sourceDocumentUrl}" target="_blank" rel="noopener">Open document</a>`
+          : `<a class="btn btn-primary" id="run-btn">Run this SOP</a>`}
       </div>
     </div>
     <div class="sop-layout">
@@ -2039,9 +2074,10 @@ function renderSopDetail(id) {
         ${neverHtml}
         ${pendingEditHtml}
         ${blackoutHtml}
+        ${documentViewHtml}
         ${beforeHtml}
         ${toolsHtml}
-        <div class="section" id="section-steps"><h2>Steps</h2><div>${stepsHtml}</div></div>
+        ${realSteps.length ? `<div class="section" id="section-steps"><h2>Steps</h2><div>${stepsHtml}</div></div>` : ""}
         ${successHtml}
         ${escalationHtml}
         ${formsHtml}
@@ -2062,7 +2098,8 @@ function renderSopDetail(id) {
 
   document.getElementById("crumb-lib").addEventListener("click", () => go("/library"));
   document.getElementById("crumb-dept").addEventListener("click", () => go("/library?dept=" + dept.id));
-  document.getElementById("run-btn").addEventListener("click", () => go("/run/" + sop.id));
+  const runBtn = document.getElementById("run-btn");
+  if (runBtn) runBtn.addEventListener("click", () => go("/run/" + sop.id));
   const historyBtn = document.getElementById("history-btn");
   if (historyBtn && !historyBtn.disabled) {
     historyBtn.addEventListener("click", (e) => {
@@ -2606,10 +2643,13 @@ function renderSopNew() {
 
 /* ============================== SOP NEW (document upload) ============================== */
 // The lightweight alternative to renderSopNew: instead of filling out the
-// whole form, just attach a file. Lands as a normal draft SOP (same
-// pending-approval queue) with a placeholder step pointing at the
-// document, for an Admin to open in the Edit SOP page and convert into
-// real content.
+// whole form, just attach a file and answer two preliminary questions
+// (title, department). Lands as a normal draft SOP (same pending-approval
+// queue), marked as document-hosted -- see the "placeholder" step flag --
+// so renderSopDetail shows a document viewer instead of the usual
+// step-by-step content. Some contributors genuinely prefer this over the
+// standard format; an Admin can still open the Edit SOP page and write
+// real step-by-step content instead if that fits better.
 function renderSopNewDocument() {
   if (!CURRENT_VIEWER) {
     pageBody.innerHTML = `<div class="empty-state">
@@ -2630,7 +2670,7 @@ function renderSopNewDocument() {
       <span>Upload a document</span>
     </div>
     <h1 style="margin-bottom:6px">Upload a document as a new SOP</h1>
-    <p class="muted small" style="margin-bottom:6px">Adding as ${escapeHtml(CURRENT_VIEWER.lastName)} (${CURRENT_VIEWER.name}) &middot; an Admin will convert this into a full SOP page.</p>
+    <p class="muted small" style="margin-bottom:6px">Adding as ${escapeHtml(CURRENT_VIEWER.lastName)} (${CURRENT_VIEWER.name}) &middot; hosted as-is once an Admin reviews it &mdash; no need to reformat it into the standard SOP layout.</p>
     <p class="muted small" style="margin-bottom:20px"><a id="switch-to-form" style="text-decoration:underline;cursor:pointer">Prefer to fill out the SOP form instead? &rarr;</a></p>
 
     <div class="edit-field"><label>Department</label>
@@ -2640,7 +2680,7 @@ function renderSopNewDocument() {
       </select>
     </div>
     <div class="edit-field"><label>Title</label><input id="doc-title" class="ef-input" placeholder="e.g. Restocking the showroom fridge"></div>
-    <div class="edit-field"><label>Notes for the Admin <span class="muted small">(optional)</span></label><textarea id="doc-notes" rows="3" placeholder="Anything the Admin should know before converting this into a full SOP"></textarea></div>
+    <div class="edit-field"><label>Notes for the Admin <span class="muted small">(optional)</span></label><textarea id="doc-notes" rows="3" placeholder="Anything the Admin should know before reviewing this"></textarea></div>
     <div class="edit-field"><label>Document <span class="muted small">(PDF, Word doc, or an image of a printed procedure)</span></label><input type="file" id="doc-file" accept=".pdf,.doc,.docx,.txt,image/*"></div>
 
     <div class="edit-actions">
@@ -2652,7 +2692,7 @@ function renderSopNewDocument() {
     <div class="modal-overlay" id="doc-pending-modal">
       <div class="modal-box">
         <h3>Document received</h3>
-        <p>Thanks &mdash; this has been added to the pending list of SOPs. It'll take some time for an Admin to review it and convert it into a full SOP page.</p>
+        <p>Thanks &mdash; this has been added to the pending list of SOPs. It'll stay hosted as this document once an Admin reviews it, or they may reformat it into the standard step-by-step layout if that fits better.</p>
         <button class="btn btn-primary" id="doc-modal-ok">Got it</button>
       </div>
     </div>`;
@@ -2689,13 +2729,14 @@ function renderSopNewDocument() {
         id: newSopId, title, department: departmentTag, status: "draft",
         owner: { name: addedBy, initials: initialsFrom(addedBy) },
         lastReviewed: null, nextReview: null, version: "v1 (draft)",
-        subtitle: "Submitted as a document — awaiting conversion into a full SOP.",
+        subtitle: "Hosted as an uploaded document.",
         beforeYouStart: [], toolsSystems: [], signedOffBy: [], relatedIds: [],
         forms: [], successCriteria: [], escalation: [],
         steps: [{
-          title: "Uploaded document awaiting conversion",
-          body: notes || "See the attached document. An Admin will convert this into full step-by-step content.",
+          title: "Uploaded document",
+          body: notes || "See the attached document.",
           type: "info",
+          placeholder: true,
         }],
         sourceDocumentUrl: fileUrl, sourceDocumentName: file.name,
       });
@@ -2743,14 +2784,15 @@ function renderRun(id) {
   document.getElementById("pause-btn").addEventListener("click", () => document.getElementById("pause-overlay").classList.add("show"));
   document.getElementById("resume-btn").addEventListener("click", () => document.getElementById("pause-overlay").classList.remove("show"));
 
-  const totalSteps = sop.steps.length + 1;
+  const steps = (sop.steps || []).filter((s) => !s.placeholder);
+  const totalSteps = steps.length + 1;
   let stepIndex = 0;
-  const checklistState = sop.steps.map((s) => (s.items ? s.items.map(() => false) : []));
+  const checklistState = steps.map((s) => (s.items ? s.items.map(() => false) : []));
   const decisionChoice = {};
   const flagged = new Set();
 
   function isStepComplete(i) {
-    const step = sop.steps[i];
+    const step = steps[i];
     if (!step) return true;
     if (step.type === "checklist" && step.items) return checklistState[i].every(Boolean);
     if (step.type === "decision") return decisionChoice[i] !== undefined;
@@ -2760,13 +2802,13 @@ function renderRun(id) {
     const pct = Math.min(100, Math.round((stepIndex / (totalSteps - 1)) * 100));
     document.getElementById("progress-fill").style.width = pct + "%";
     const shown = Math.min(stepIndex + 1, totalSteps);
-    document.getElementById("step-label").textContent = stepIndex >= sop.steps.length ? "Sign off" : `Step ${shown} of ${sop.steps.length}`;
+    document.getElementById("step-label").textContent = stepIndex >= steps.length ? "Sign off" : `Step ${shown} of ${steps.length}`;
     document.getElementById("step-tag").textContent = flagged.has(stepIndex) ? "Flagged" : "";
   }
   function renderStep() {
     const body = document.getElementById("run-body");
-    if (stepIndex >= sop.steps.length) { renderComplete(body); renderFooterComplete(); renderProgress(); return; }
-    const step = sop.steps[stepIndex];
+    if (stepIndex >= steps.length) { renderComplete(body); renderFooterComplete(); renderProgress(); return; }
+    const step = steps[stepIndex];
     const tagChip = { approval: `<span class="tag-chip tag-approval">Approval required</span>`, confidential: `<span class="tag-chip tag-confidential">&#128274; Confidential</span>` };
     let inner = `<div class="sop-name">${sop.title}</div>`;
     if (stepIndex === 0 && sop.blackoutPeriods && sop.blackoutPeriods.length) {
@@ -2787,7 +2829,7 @@ function renderRun(id) {
   }
   function renderComplete(body) {
     let recapRows = "";
-    sop.steps.forEach((s, i) => { if (s.type === "decision" && decisionChoice[i] !== undefined) recapRows += `<div class="recap-row"><span class="muted">${s.title}</span><span style="font-weight:600">${s.options[decisionChoice[i]].label}</span></div>`; });
+    steps.forEach((s, i) => { if (s.type === "decision" && decisionChoice[i] !== undefined) recapRows += `<div class="recap-row"><span class="muted">${s.title}</span><span style="font-weight:600">${s.options[decisionChoice[i]].label}</span></div>`; });
     body.innerHTML = `<div class="complete-screen">
       <div class="complete-icon">&#10003;</div>
       <h2>${sop.title.split(" — ")[0]}. Done.</h2>
@@ -2800,7 +2842,7 @@ function renderRun(id) {
     let footer = document.getElementById("run-footer");
     if (!footer) { footer = document.createElement("div"); footer.className = "run-footer"; footer.id = "run-footer"; document.getElementById("run-shell").insertBefore(footer, document.getElementById("pause-overlay")); }
     const complete = isStepComplete(stepIndex);
-    const isLast = stepIndex === sop.steps.length - 1;
+    const isLast = stepIndex === steps.length - 1;
     footer.innerHTML = `<button class="btn btn-secondary" id="back-btn" ${stepIndex === 0 ? "disabled" : ""}>Back</button><button class="btn btn-primary" id="next-btn" ${complete ? "" : "disabled"}>${isLast ? "Finish & sign off" : "Next step"}</button>`;
     document.getElementById("back-btn").addEventListener("click", () => { if (stepIndex > 0) { stepIndex--; renderStep(); } });
     document.getElementById("next-btn").addEventListener("click", () => { if (!isStepComplete(stepIndex)) return; stepIndex++; renderStep(); });
