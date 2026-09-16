@@ -419,6 +419,13 @@
   .edit-details summary::before { content: "\25b8"; display: inline-block; margin-right: 8px; transition: transform .12s; }
   .edit-details[open] summary::before { transform: rotate(90deg); }
   .edit-details .edit-field:last-child { margin-bottom: 0; }
+
+  /* Add-SOP-as-document modal + confirmation popup */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(10,14,26,.6); display: none; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+  .modal-overlay.show { display: flex; }
+  .modal-box { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 28px; max-width: 420px; text-align: center; }
+  .modal-box h3 { font: 700 18px Barlow, sans-serif; margin-bottom: 10px; }
+  .modal-box p { color: var(--text-secondary); margin-bottom: 20px; font-size: 14px; line-height: 1.5; }
   .edit-actions { display: flex; gap: 10px; margin-top: 24px; }
 
   /* ---- Run mode ---- */
@@ -1049,6 +1056,9 @@ function render() {
   } else if (path === "/new") {
     appShell.style.display = "block"; runRoot.style.display = "none";
     renderSopNew();
+  } else if (path === "/new/document") {
+    appShell.style.display = "block"; runRoot.style.display = "none";
+    renderSopNewDocument();
   } else if (path.indexOf("/edit/") === 0) {
     appShell.style.display = "block"; runRoot.style.display = "none";
     renderSopEdit(decodeURIComponent(path.slice(6)));
@@ -1673,6 +1683,14 @@ function renderSopDetail(id) {
   let neverHtml = "";
   if (sop.neverDoThis) neverHtml = `<div class="never-banner"><span class="tag">Never do this</span><span>${sop.neverDoThis}</span></div>`;
 
+  let docPendingHtml = "";
+  if (sop.sourceDocumentUrl && sop.status === "draft") {
+    docPendingHtml = `<div class="never-banner" id="section-doc-pending">
+      <span class="tag">Uploaded document &mdash; pending conversion</span>
+      <span>This SOP was submitted as a document${sop.sourceDocumentName ? ` (${escapeHtml(sop.sourceDocumentName)})` : ""} and is waiting for an Admin to convert it into a full SOP page. <a href="${sop.sourceDocumentUrl}" target="_blank" rel="noopener">View the original document</a></span>
+    </div>`;
+  }
+
   const pendingEdits = EDIT_PROPOSALS.filter((p) => p.sopId === sop.id && p.status === "pending");
   let pendingEditHtml = "";
   if (pendingEdits.length) {
@@ -1786,6 +1804,7 @@ function renderSopDetail(id) {
     </div>
     <div class="sop-layout">
       <main>
+        ${docPendingHtml}
         ${neverHtml}
         ${pendingEditHtml}
         ${blackoutHtml}
@@ -2190,7 +2209,8 @@ function renderSopNew() {
       <span>New SOP</span>
     </div>
     <h1 style="margin-bottom:6px">Add a new SOP</h1>
-    <p class="muted small" style="margin-bottom:20px">Adding as ${escapeHtml(CURRENT_VIEWER.lastName)} (${CURRENT_VIEWER.name}) &middot; starts as a draft until reviewed and approved.</p>
+    <p class="muted small" style="margin-bottom:6px">Adding as ${escapeHtml(CURRENT_VIEWER.lastName)} (${CURRENT_VIEWER.name}) &middot; starts as a draft until reviewed and approved.</p>
+    <p class="muted small" style="margin-bottom:20px"><a id="switch-to-doc-upload" style="text-decoration:underline;cursor:pointer">Have a document instead of filling out this form? Upload it &rarr;</a></p>
 
     <div class="edit-field"><label>Department</label>
       <select id="ef-department" class="ef-input">
@@ -2226,6 +2246,7 @@ function renderSopNew() {
 
   document.getElementById("crumb-lib3").addEventListener("click", () => go("/library"));
   document.getElementById("edit-cancel").addEventListener("click", () => go("/library"));
+  document.getElementById("switch-to-doc-upload").addEventListener("click", () => go("/new/document"));
   wireKvEditors();
 
   function updateStepMoveButtons() {
@@ -2349,6 +2370,114 @@ function renderSopNew() {
       saveBtn.textContent = "Save as draft";
       statusEl.textContent = "Couldn't save: " + err.message;
     }
+  });
+}
+
+/* ============================== SOP NEW (document upload) ============================== */
+// The lightweight alternative to renderSopNew: instead of filling out the
+// whole form, just attach a file. Lands as a normal draft SOP (same
+// pending-approval queue) with a placeholder step pointing at the
+// document, for an Admin to open in the Edit SOP page and convert into
+// real content.
+function renderSopNewDocument() {
+  if (!CURRENT_VIEWER) {
+    pageBody.innerHTML = `<div class="empty-state">
+      <p>Log in to add a new SOP.</p>
+      <button class="btn btn-secondary" id="doc-pick-viewer">Log in</button>
+      <div style="margin-top:12px"><button class="btn btn-secondary" id="back-lib5">Back to the library</button></div>
+    </div>`;
+    document.getElementById("doc-pick-viewer").addEventListener("click", (e) => { e.stopPropagation(); openViewerMenu(); });
+    document.getElementById("back-lib5").addEventListener("click", () => go("/library"));
+    return;
+  }
+
+  const deptOptions = DEPARTMENTS.map((d) => `<option value="${d.id}">${d.name}</option>`).join("");
+
+  pageBody.innerHTML = `
+    <div class="breadcrumb">
+      <a id="crumb-lib4">Library</a><span class="sep">/</span>
+      <span>Upload a document</span>
+    </div>
+    <h1 style="margin-bottom:6px">Upload a document as a new SOP</h1>
+    <p class="muted small" style="margin-bottom:6px">Adding as ${escapeHtml(CURRENT_VIEWER.lastName)} (${CURRENT_VIEWER.name}) &middot; an Admin will convert this into a full SOP page.</p>
+    <p class="muted small" style="margin-bottom:20px"><a id="switch-to-form" style="text-decoration:underline;cursor:pointer">Prefer to fill out the SOP form instead? &rarr;</a></p>
+
+    <div class="edit-field"><label>Department</label>
+      <select id="doc-department" class="ef-input">
+        <option value="">Choose which team this SOP belongs to&hellip;</option>
+        ${deptOptions}
+      </select>
+    </div>
+    <div class="edit-field"><label>Title</label><input id="doc-title" class="ef-input" placeholder="e.g. Restocking the showroom fridge"></div>
+    <div class="edit-field"><label>Notes for the Admin <span class="muted small">(optional)</span></label><textarea id="doc-notes" rows="3" placeholder="Anything the Admin should know before converting this into a full SOP"></textarea></div>
+    <div class="edit-field"><label>Document <span class="muted small">(PDF, Word doc, or an image of a printed procedure)</span></label><input type="file" id="doc-file" accept=".pdf,.doc,.docx,.txt,image/*"></div>
+
+    <div class="edit-actions">
+      <button class="btn btn-secondary" id="doc-cancel">Cancel</button>
+      <button class="btn btn-primary" id="doc-submit">Submit document</button>
+    </div>
+    <p class="muted small" id="doc-status" style="min-height:16px;margin-top:8px"></p>
+
+    <div class="modal-overlay" id="doc-pending-modal">
+      <div class="modal-box">
+        <h3>Document received</h3>
+        <p>Thanks &mdash; this has been added to the pending list of SOPs. It'll take some time for an Admin to review it and convert it into a full SOP page.</p>
+        <button class="btn btn-primary" id="doc-modal-ok">Got it</button>
+      </div>
+    </div>`;
+
+  document.getElementById("crumb-lib4").addEventListener("click", () => go("/library"));
+  document.getElementById("doc-cancel").addEventListener("click", () => go("/library"));
+  document.getElementById("switch-to-form").addEventListener("click", () => go("/new"));
+
+  const submitBtn = document.getElementById("doc-submit");
+  const statusEl = document.getElementById("doc-status");
+  let newSopId = null;
+
+  submitBtn.addEventListener("click", async () => {
+    const departmentTag = document.getElementById("doc-department").value;
+    if (!departmentTag) { statusEl.textContent = "Choose which department this SOP belongs to."; return; }
+    const title = document.getElementById("doc-title").value.trim();
+    if (!title) { statusEl.textContent = "Title can't be empty."; return; }
+    const fileInput = document.getElementById("doc-file");
+    const file = fileInput.files[0];
+    if (!file) { statusEl.textContent = "Attach a document before submitting."; return; }
+
+    const notes = document.getElementById("doc-notes").value.trim();
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Uploading...";
+    statusEl.textContent = "";
+    try {
+      const fileUrl = await API.uploadSopDocument(file);
+      newSopId = await API.addSopDocument(
+        CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName,
+        departmentTag, title, fileUrl, file.name, notes || null
+      );
+      const addedBy = CURRENT_VIEWER.lastName;
+      SOPS.push({
+        id: newSopId, title, department: departmentTag, status: "draft",
+        owner: { name: addedBy, initials: initialsFrom(addedBy) },
+        lastReviewed: null, nextReview: null, version: "v1 (draft)",
+        subtitle: "Submitted as a document — awaiting conversion into a full SOP.",
+        beforeYouStart: [], toolsSystems: [], signedOffBy: [], relatedIds: [],
+        forms: [], successCriteria: [], escalation: [],
+        steps: [{
+          title: "Uploaded document awaiting conversion",
+          body: notes || "See the attached document. An Admin will convert this into full step-by-step content.",
+          type: "info",
+        }],
+        sourceDocumentUrl: fileUrl, sourceDocumentName: file.name,
+      });
+      document.getElementById("doc-pending-modal").classList.add("show");
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit document";
+      statusEl.textContent = "Couldn't submit: " + err.message;
+    }
+  });
+
+  document.getElementById("doc-modal-ok").addEventListener("click", () => {
+    if (newSopId) go("/sop/" + newSopId); else go("/library");
   });
 }
 
@@ -2968,6 +3097,8 @@ function mapSop(row) {
     blackoutPeriods: row.blackout_periods && row.blackout_periods.length ? row.blackout_periods : undefined,
     blackoutFlag: row.blackout_flag || undefined,
     signedOffBy: row.signed_off_by || [],
+    sourceDocumentUrl: row.source_document_url || undefined,
+    sourceDocumentName: row.source_document_name || undefined,
   };
 }
 function loginLabel(id) {

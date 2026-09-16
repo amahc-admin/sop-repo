@@ -94,6 +94,17 @@ const API = (() => {
     addSop(loginId, passcode, lastName, departmentTag, sop) {
       return rpc("add_sop", { p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_department_tag: departmentTag, p_sop: sop });
     },
+    // Skips the structured form -- attaches a raw file instead, pending
+    // an Admin converting it into a full SOP (see 0009_sop_document_upload.sql).
+    addSopDocument(loginId, passcode, lastName, departmentTag, title, fileUrl, fileName, notes) {
+      return rpc("add_sop_document", {
+        p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_department_tag: departmentTag,
+        p_title: title, p_file_url: fileUrl, p_file_name: fileName, p_notes: notes,
+      });
+    },
+    uploadSopDocument(file) {
+      return uploadPublicFile("sop-documents", file);
+    },
     addSuggestion(sopId, loginId, passcode, lastName, text) {
       return rpc("add_suggestion", { p_sop_id: sopId, p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_text: text });
     },
