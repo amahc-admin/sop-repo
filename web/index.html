@@ -503,7 +503,7 @@
     <nav class="topnav" id="topnav">
       <a data-route="/">Home</a>
       <a data-route="/library">Library</a>
-      <a data-route="/library">My Queue</a>
+      <a data-route="/queue">My Queue</a>
       <a data-route="/suggestions">Suggestions</a>
       <a data-route="/directory">Directory</a>
     </nav>
@@ -1043,6 +1043,10 @@ function render() {
     appShell.style.display = "block"; runRoot.style.display = "none";
     document.querySelectorAll('#topnav a[data-route="/suggestions"]')[0].classList.add("active");
     renderSuggestionsPage();
+  } else if (path === "/queue") {
+    appShell.style.display = "block"; runRoot.style.display = "none";
+    document.querySelectorAll('#topnav a[data-route="/queue"]')[0].classList.add("active");
+    renderQueue();
   } else if (path === "/directory") {
     appShell.style.display = "block"; runRoot.style.display = "none";
     document.querySelectorAll('#topnav a[data-route="/directory"]')[0].classList.add("active");
@@ -1428,9 +1432,10 @@ function editProposalsSectionHtml() {
     </div>
     <div id="edit-proposal-list">${rows}</div>`;
 }
-function wireEditProposalsSection() {
+function wireEditProposalsSection(refresh) {
+  refresh = refresh || renderSuggestionsPage;
   document.querySelectorAll("#edit-proposal-filters [data-epfilter]").forEach((btn) => {
-    btn.addEventListener("click", () => { editProposalFilter = btn.dataset.epfilter; renderSuggestionsPage(); });
+    btn.addEventListener("click", () => { editProposalFilter = btn.dataset.epfilter; refresh(); });
   });
   document.querySelectorAll("#edit-proposals-section .target[data-sop]").forEach((el) => {
     if (el.dataset.sop) el.addEventListener("click", () => go("/sop/" + el.dataset.sop));
@@ -1455,7 +1460,7 @@ function wireEditProposalsSection() {
           sop.status = "review-due";
           EVENTS.push({ sopId: sop.id, kind: "edited", loginId: p.loginId, lastName: p.lastName, loginName: p.loginName, fields: p.fields, ...eventStamp() });
         }
-        renderSuggestionsPage();
+        refresh();
       } catch (err) {
         btn.disabled = false;
         btn.textContent = "Approve";
@@ -1476,7 +1481,7 @@ function wireEditProposalsSection() {
         p.status = "rejected";
         p.decidedByLastName = CURRENT_VIEWER.lastName;
         p.decidedDate = eventStamp().fullDate;
-        renderSuggestionsPage();
+        refresh();
       } catch (err) {
         btn.disabled = false;
         btn.textContent = "Reject";
@@ -1571,9 +1576,10 @@ function directoryProposalsSectionHtml() {
     </div>
     <div id="directory-proposal-list">${rows}</div>`;
 }
-function wireDirectoryProposalsSection() {
+function wireDirectoryProposalsSection(refresh) {
+  refresh = refresh || renderSuggestionsPage;
   document.querySelectorAll("#directory-proposal-filters [data-dpfilter]").forEach((btn) => {
-    btn.addEventListener("click", () => { directoryProposalFilter = btn.dataset.dpfilter; renderSuggestionsPage(); });
+    btn.addEventListener("click", () => { directoryProposalFilter = btn.dataset.dpfilter; refresh(); });
   });
   document.querySelectorAll("#directory-proposals-section .target[data-person]").forEach((el) => {
     if (el.dataset.person) el.addEventListener("click", () => go("/directory/edit/" + el.dataset.person));
@@ -1601,7 +1607,7 @@ function wireDirectoryProposalsSection() {
           if ("reports_to" in f) entry.reportsTo = f.reports_to || null;
           if ("photo_url" in f) entry.photoUrl = f.photo_url || "";
         }
-        renderSuggestionsPage();
+        refresh();
       } catch (err) {
         btn.disabled = false;
         btn.textContent = "Approve";
@@ -1622,7 +1628,7 @@ function wireDirectoryProposalsSection() {
         p.status = "rejected";
         p.decidedByLastName = CURRENT_VIEWER.lastName;
         p.decidedDate = eventStamp().fullDate;
-        renderSuggestionsPage();
+        refresh();
       } catch (err) {
         btn.disabled = false;
         btn.textContent = "Reject";
@@ -1630,6 +1636,159 @@ function wireDirectoryProposalsSection() {
       }
     });
   });
+}
+
+/* ============================== MY QUEUE (admin approvals) ============================== */
+// A single Admin-facing dashboard of everything waiting on a decision:
+// new SOPs (incl. uploaded documents), new directory entries, and the
+// edit-proposal sections already built for the Suggestions page (reused
+// as-is, just pointed at renderQueue() as their refresh callback instead
+// of renderSuggestionsPage()).
+function renderQueue() {
+  if (!CURRENT_VIEWER) {
+    pageBody.innerHTML = `<div class="empty-state">
+      <p>Log in as Admin to view My Queue.</p>
+      <button class="btn btn-secondary" id="queue-pick-viewer">Log in</button>
+    </div>`;
+    document.getElementById("queue-pick-viewer").addEventListener("click", (e) => { e.stopPropagation(); openViewerMenu(); });
+    return;
+  }
+  if (!isAdmin(CURRENT_VIEWER)) {
+    pageBody.innerHTML = `<div class="empty-state">
+      <p>My Queue is for Admins reviewing pending SOPs, edits, and directory changes.</p>
+      <button class="btn btn-secondary" id="queue-to-suggestions">View Suggestions &amp; feedback instead</button>
+    </div>`;
+    document.getElementById("queue-to-suggestions").addEventListener("click", () => go("/suggestions"));
+    return;
+  }
+
+  const draftSops = SOPS.filter((s) => s.status === "draft").sort((a, b) => (b.id > a.id ? 1 : -1));
+  const sopRows = draftSops.length
+    ? draftSops.map((sop) => {
+        const dept = getDepartment(sop.department);
+        return `<div class="review-item">
+          <div class="suggestion-meta">
+            <span class="suggestion-dept">${escapeHtml(sop.owner.name)}</span>
+            <span class="suggestion-status suggestion-status-pending">Draft</span>
+            ${sop.sourceDocumentUrl ? `<span class="badge badge-draft">Uploaded document</span>` : ""}
+          </div>
+          <div class="target" data-sop="${sop.id}">${escapeHtml(sop.title)}${dept ? " &middot; " + escapeHtml(dept.name) : ""}</div>
+          <div class="review-footer">
+            <button class="btn btn-secondary" data-queue-approve-sop="${sop.id}">Approve</button>
+            <button class="btn btn-danger" data-queue-disapprove-sop="${sop.id}">Disapprove</button>
+          </div>
+        </div>`;
+      }).join("")
+    : `<div class="empty-state">No new SOPs waiting on approval.</div>`;
+
+  const draftPeople = DIRECTORY.filter((p) => p.status === "draft").sort((a, b) => (b.id > a.id ? 1 : -1));
+  const peopleRows = draftPeople.length
+    ? draftPeople.map((p) => {
+        const dept = getDepartment(p.department);
+        return `<div class="review-item">
+          <div class="suggestion-meta">
+            <span class="suggestion-status suggestion-status-pending">Draft</span>
+          </div>
+          <div class="target" data-person="${p.id}">${escapeHtml(p.name)} &middot; ${escapeHtml(p.role)}${dept ? " &middot; " + escapeHtml(dept.name) : ""}</div>
+          <div class="review-footer">
+            <button class="btn btn-secondary" data-queue-approve-person="${p.id}">Approve</button>
+            <button class="btn btn-danger" data-queue-disapprove-person="${p.id}">Disapprove</button>
+          </div>
+        </div>`;
+      }).join("")
+    : `<div class="empty-state">No new directory entries waiting on approval.</div>`;
+
+  pageBody.innerHTML = `
+    <h1 style="margin-bottom:20px">My Queue</h1>
+    <div class="library-header"><h2>New SOPs awaiting approval (${draftSops.length})</h2></div>
+    <div id="queue-sop-list">${sopRows}</div>
+    <div class="library-header" style="margin-top:32px"><h2>New directory entries awaiting approval (${draftPeople.length})</h2></div>
+    <div id="queue-person-list">${peopleRows}</div>
+    <div id="edit-proposals-section" style="margin-top:32px">${editProposalsSectionHtml()}</div>
+    <div id="directory-proposals-section" style="margin-top:32px">${directoryProposalsSectionHtml()}</div>`;
+
+  document.querySelectorAll("#queue-sop-list .target[data-sop]").forEach((el) => {
+    el.addEventListener("click", () => go("/sop/" + el.dataset.sop));
+  });
+  document.querySelectorAll("#queue-person-list .target[data-person]").forEach((el) => {
+    el.addEventListener("click", () => go("/directory/edit/" + el.dataset.person));
+  });
+  document.querySelectorAll("[data-queue-approve-sop]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.queueApproveSop;
+      btn.disabled = true;
+      btn.textContent = "Approving...";
+      try {
+        await API.approveSop(id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        const sop = getSop(id);
+        if (sop) {
+          sop.status = "current";
+          sop.lastReviewed = eventStamp().monthYear;
+          sop.signedOffBy = (sop.signedOffBy || []).concat([{ name: CURRENT_VIEWER.lastName, initials: initialsFrom(CURRENT_VIEWER.lastName), date: eventStamp().fullDate }]);
+        }
+        renderQueue();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Approve";
+        alert("Couldn't approve: " + err.message);
+      }
+    });
+  });
+  document.querySelectorAll("[data-queue-disapprove-sop]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.queueDisapproveSop;
+      const ok = confirm("Remove this SOP permanently?");
+      if (!ok) return;
+      btn.disabled = true;
+      btn.textContent = "Removing...";
+      try {
+        await API.disapproveSop(id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        SOPS = SOPS.filter((s) => s.id !== id);
+        renderQueue();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Disapprove";
+        alert("Couldn't remove: " + err.message);
+      }
+    });
+  });
+  document.querySelectorAll("[data-queue-approve-person]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.queueApprovePerson;
+      btn.disabled = true;
+      btn.textContent = "Approving...";
+      try {
+        await API.approveDirectoryEntry(id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        const p = DIRECTORY.find((x) => x.id === id);
+        if (p) p.status = "current";
+        renderQueue();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Approve";
+        alert("Couldn't approve: " + err.message);
+      }
+    });
+  });
+  document.querySelectorAll("[data-queue-disapprove-person]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.queueDisapprovePerson;
+      const ok = confirm("Remove this directory entry permanently?");
+      if (!ok) return;
+      btn.disabled = true;
+      btn.textContent = "Removing...";
+      try {
+        await API.disapproveDirectoryEntry(id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName);
+        DIRECTORY = DIRECTORY.filter((x) => x.id !== id);
+        renderQueue();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Disapprove";
+        alert("Couldn't remove: " + err.message);
+      }
+    });
+  });
+  wireEditProposalsSection(renderQueue);
+  wireDirectoryProposalsSection(renderQueue);
 }
 
 /* ============================== SOP DETAIL ============================== */
