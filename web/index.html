@@ -369,8 +369,10 @@
   .person-avatar { width: 80px; height: 80px; border-radius: 50%; background: var(--card-bg); border: 2px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font: 700 22px Barlow, sans-serif; color: var(--text-secondary); overflow: hidden; cursor: pointer; flex: none; }
   .person-avatar img { width: 100%; height: 100%; object-fit: cover; }
   .person-role-label { font: 600 12px Barlow, sans-serif; color: var(--text-secondary); text-align: center; max-width: 120px; line-height: 1.3; }
-  .person-tooltip { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); z-index: 30; }
+  .person-tooltip { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); z-index: 30; margin-top: 8px; }
   .person-node:hover .person-tooltip, .person-node.open .person-tooltip { display: block; }
+  /* Set by positionPersonTooltip() in JS when there's no room below. */
+  .person-tooltip.flip-up { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 8px; }
 
   /* ---- SOP edit form ---- */
   .edit-field { margin-bottom: 20px; max-width: 720px; }
@@ -2472,14 +2474,36 @@ function renderDirectory() {
   // Tapping an avatar toggles its tooltip (touch screens have no
   // :hover); see the single document-level listener near the top of
   // this script that closes whichever one is open on an outside click.
+  // positionPersonTooltip flips the tooltip above the node instead of
+  // below when there isn't enough room in the viewport underneath it
+  // (e.g. someone near the bottom of a tall tree) -- otherwise it'd
+  // render off the bottom of the page and need a scroll to even see.
   document.querySelectorAll("[data-person-node]").forEach((el) => {
+    el.addEventListener("mouseenter", () => positionPersonTooltip(el));
     el.addEventListener("click", (e) => {
       e.stopPropagation();
+      positionPersonTooltip(el);
       const wasOpen = el.classList.contains("open");
       document.querySelectorAll(".person-node.open").forEach((o) => o.classList.remove("open"));
       if (!wasOpen) el.classList.add("open");
     });
   });
+}
+function positionPersonTooltip(el) {
+  const tooltip = el.querySelector(".person-tooltip");
+  if (!tooltip) return;
+  tooltip.classList.remove("flip-up");
+  const prevDisplay = tooltip.style.display;
+  const prevVisibility = tooltip.style.visibility;
+  tooltip.style.visibility = "hidden";
+  tooltip.style.display = "block";
+  const nodeRect = el.getBoundingClientRect();
+  const tooltipHeight = tooltip.offsetHeight;
+  tooltip.style.display = prevDisplay;
+  tooltip.style.visibility = prevVisibility;
+  if (nodeRect.bottom + tooltipHeight + 16 > window.innerHeight) {
+    tooltip.classList.add("flip-up");
+  }
 }
 
 function renderDirectoryNew() {
