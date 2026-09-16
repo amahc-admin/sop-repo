@@ -2334,7 +2334,7 @@ function buildDirectoryTree(entries) {
 function directoryActionsHtml(p) {
   if (p.status === "draft") {
     return isAdmin(CURRENT_VIEWER)
-      ? `<button class="btn btn-secondary" data-approve-person="${p.id}">Approve</button> <button class="btn btn-danger" data-remove-person="${p.id}">Remove</button>`
+      ? `<button class="btn btn-secondary" data-edit-person="${p.id}">Edit</button> <button class="btn btn-secondary" data-approve-person="${p.id}">Approve</button> <button class="btn btn-danger" data-remove-person="${p.id}">Remove</button>`
       : `<span class="muted small">Awaiting Admin approval</span>`;
   }
   if (CURRENT_VIEWER) {
