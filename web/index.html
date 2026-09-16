@@ -341,14 +341,14 @@
      classic "pure CSS org chart" recipe: a branch's own ::before draws
      the vertical drop from the parent, and each child li's ::before/
      ::after draw the horizontal half-lines that meet its siblings. */
-  .org-tree-wrap { display: flex; justify-content: center; overflow-x: auto; padding: 16px 0 24px; }
-  .org-tree { display: flex; justify-content: center; gap: 48px; list-style: none; margin: 0; padding: 0; }
+  .org-tree-wrap { display: flex; justify-content: center; align-items: flex-start; overflow-x: auto; min-height: 50vh; padding: 40px 0; }
+  .org-tree { display: flex; justify-content: center; gap: 72px; list-style: none; margin: 0; padding: 0; }
   .org-tree > li { display: flex; flex-direction: column; align-items: center; }
 
-  .org-branch { display: flex; justify-content: center; list-style: none; margin: 0; padding-top: 28px; position: relative; }
-  .org-branch > li { position: relative; display: flex; flex-direction: column; align-items: center; padding: 28px 20px 0 20px; }
+  .org-branch { display: flex; justify-content: center; list-style: none; margin: 0; padding-top: 40px; position: relative; }
+  .org-branch > li { position: relative; display: flex; flex-direction: column; align-items: center; padding: 40px 32px 0 32px; }
   .org-branch > li::before, .org-branch > li::after {
-    content: ""; position: absolute; top: 0; right: 50%; width: 50%; height: 28px; border-top: 2px solid var(--border);
+    content: ""; position: absolute; top: 0; right: 50%; width: 50%; height: 40px; border-top: 2px solid var(--border);
   }
   .org-branch > li::after { right: auto; left: 50%; border-left: 2px solid var(--border); }
   .org-branch > li:first-child::before { border: none; }
@@ -356,7 +356,7 @@
   .org-branch > li:only-child::before, .org-branch > li:only-child::after { display: none; }
   .org-branch > li:only-child { padding-top: 0; }
   .org-branch::before {
-    content: ""; position: absolute; top: 0; left: 50%; width: 0; height: 28px; border-left: 2px solid var(--border);
+    content: ""; position: absolute; top: 0; left: 50%; width: 0; height: 40px; border-left: 2px solid var(--border);
   }
 
   .org-card { display: inline-flex; flex-direction: column; gap: 2px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 14px; min-width: 200px; max-width: 320px; text-align: left; }
@@ -366,9 +366,9 @@
      underneath -- hovering or tapping it reveals an .org-card with the
      full details (name, department, contact, notes). */
   .person-node { position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
-  .person-avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--card-bg); border: 2px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font: 700 16px Barlow, sans-serif; color: var(--text-secondary); overflow: hidden; cursor: pointer; flex: none; }
+  .person-avatar { width: 80px; height: 80px; border-radius: 50%; background: var(--card-bg); border: 2px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font: 700 22px Barlow, sans-serif; color: var(--text-secondary); overflow: hidden; cursor: pointer; flex: none; }
   .person-avatar img { width: 100%; height: 100%; object-fit: cover; }
-  .person-role-label { font: 600 11px Barlow, sans-serif; color: var(--text-secondary); text-align: center; max-width: 92px; line-height: 1.25; }
+  .person-role-label { font: 600 12px Barlow, sans-serif; color: var(--text-secondary); text-align: center; max-width: 120px; line-height: 1.3; }
   .person-tooltip { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); z-index: 30; }
   .person-node:hover .person-tooltip, .person-node.open .person-tooltip { display: block; }
 
