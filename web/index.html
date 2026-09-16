@@ -430,6 +430,14 @@
   .modal-box { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 28px; max-width: 420px; text-align: center; }
   .modal-box h3 { font: 700 18px Barlow, sans-serif; margin-bottom: 10px; }
   .modal-box p { color: var(--text-secondary); margin-bottom: 20px; font-size: 14px; line-height: 1.5; }
+  .modal-box.modal-box-wide { max-width: 560px; }
+  .choice-row { display: flex; gap: 14px; margin-top: 4px; }
+  .choice-card { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: 22px 16px; cursor: pointer; font: inherit; color: var(--text-primary); transition: border-color .12s, transform .12s; }
+  .choice-card:hover { border-color: var(--yellow); transform: translateY(-2px); }
+  .choice-icon { font-size: 30px; margin-bottom: 4px; }
+  .choice-title { font: 700 15px Barlow, sans-serif; }
+  .choice-desc { font: 400 12.5px/1.4 Barlow, sans-serif; color: var(--text-secondary); }
+  @media (max-width: 520px) { .choice-row { flex-direction: column; } }
   .edit-actions { display: flex; gap: 10px; margin-top: 24px; }
 
   /* ---- Run mode ---- */
@@ -1150,6 +1158,44 @@ function renderHome() {
 
 /* ============================== LIBRARY ============================== */
 let libState = { dept: "all", status: "all", view: "grid" };
+// Lives on document.body (not pageBody, which gets wiped on every
+// render()) so it survives navigation and only needs building once.
+// "+ Add SOP" opens this instead of jumping straight to the manual form,
+// since some contributors would rather attach a document than fill it
+// out -- see renderSopNewDocument.
+function showAddSopChoiceModal() {
+  let modal = document.getElementById("add-sop-choice-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.className = "modal-overlay";
+    modal.id = "add-sop-choice-modal";
+    modal.innerHTML = `
+      <div class="modal-box modal-box-wide">
+        <h3>Add a new SOP</h3>
+        <p>How would you like to add it?</p>
+        <div class="choice-row">
+          <button type="button" class="choice-card" id="add-sop-choice-manual">
+            <span class="choice-icon">&#128221;</span>
+            <span class="choice-title">Enter manually</span>
+            <span class="choice-desc">Fill out the standard SOP form, step by step.</span>
+          </button>
+          <button type="button" class="choice-card" id="add-sop-choice-document">
+            <span class="choice-icon">&#128196;</span>
+            <span class="choice-title">Upload a document</span>
+            <span class="choice-desc">Attach a PDF or file instead &mdash; no reformatting needed.</span>
+          </button>
+        </div>
+        <button type="button" class="btn btn-secondary" id="add-sop-choice-cancel" style="margin-top:20px;width:100%">Cancel</button>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.remove("show"); });
+    modal.querySelector("#add-sop-choice-manual").addEventListener("click", () => { modal.classList.remove("show"); go("/new"); });
+    modal.querySelector("#add-sop-choice-document").addEventListener("click", () => { modal.classList.remove("show"); go("/new/document"); });
+    modal.querySelector("#add-sop-choice-cancel").addEventListener("click", () => modal.classList.remove("show"));
+  }
+  modal.classList.add("show");
+}
+
 function renderLibrary(params) {
   libState.dept = params.get("dept") || "all";
   libState.status = params.get("status") || "all";
@@ -1183,7 +1229,7 @@ function renderLibrary(params) {
   renderCards();
 
   const addSopBtn = document.getElementById("add-sop-btn");
-  if (addSopBtn && !addSopBtn.disabled) addSopBtn.addEventListener("click", () => go("/new"));
+  if (addSopBtn && !addSopBtn.disabled) addSopBtn.addEventListener("click", () => showAddSopChoiceModal());
 
   document.getElementById("dept-filter").addEventListener("click", (e) => {
     const a = e.target.closest("a[data-dept]");
@@ -2478,7 +2524,7 @@ function renderSopNew() {
     </div>
     <h1 style="margin-bottom:6px">Add a new SOP</h1>
     <p class="muted small" style="margin-bottom:6px">Adding as ${escapeHtml(CURRENT_VIEWER.lastName)} (${CURRENT_VIEWER.name}) &middot; starts as a draft until reviewed and approved.</p>
-    <p class="muted small" style="margin-bottom:20px"><a id="switch-to-doc-upload" style="text-decoration:underline;cursor:pointer">Have a document instead of filling out this form? Upload it &rarr;</a></p>
+    <button type="button" class="btn btn-secondary" id="switch-to-doc-upload" style="margin-bottom:20px">&#128196; Have a document instead? Upload it &rarr;</button>
 
     <div class="edit-field"><label>Department</label>
       <select id="ef-department" class="ef-input">
@@ -2671,7 +2717,7 @@ function renderSopNewDocument() {
     </div>
     <h1 style="margin-bottom:6px">Upload a document as a new SOP</h1>
     <p class="muted small" style="margin-bottom:6px">Adding as ${escapeHtml(CURRENT_VIEWER.lastName)} (${CURRENT_VIEWER.name}) &middot; hosted as-is once an Admin reviews it &mdash; no need to reformat it into the standard SOP layout.</p>
-    <p class="muted small" style="margin-bottom:20px"><a id="switch-to-form" style="text-decoration:underline;cursor:pointer">Prefer to fill out the SOP form instead? &rarr;</a></p>
+    <button type="button" class="btn btn-secondary" id="switch-to-form" style="margin-bottom:20px">&#128221; Prefer the standard form instead? &rarr;</button>
 
     <div class="edit-field"><label>Department</label>
       <select id="doc-department" class="ef-input">
