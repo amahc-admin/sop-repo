@@ -2271,6 +2271,9 @@ function renderRun(id) {
 
 /* ============================== DIRECTORY ============================== */
 let directorySearchQuery = "";
+let directoryZoom = 1;
+const DIRECTORY_ZOOM_MIN = 0.4;
+const DIRECTORY_ZOOM_MAX = 1.2;
 
 // Options for the "Reports to" dropdown: everyone except the person
 // themselves (so no one can be set as their own manager).
@@ -2442,15 +2445,26 @@ function renderDirectory() {
   } else {
     const { roots, childrenOf } = buildDirectoryTree(DIRECTORY);
     bodyHtml = roots.length
-      ? `<div class="org-tree-wrap"><ul class="org-tree">${roots.map((r) => renderOrgNode(r, childrenOf)).join("")}</ul></div>`
+      ? `<div class="org-tree-wrap" style="zoom:${directoryZoom}"><ul class="org-tree">${roots.map((r) => renderOrgNode(r, childrenOf)).join("")}</ul></div>`
       : `<div class="empty-state">No one in the directory yet.</div>`;
   }
+
+  // Zoom only makes sense for the tree view -- the flat search-result
+  // list already reads fine at any width and doesn't need it.
+  const zoomControlsHtml = q ? "" : `
+    <div class="row" style="gap:4px;align-items:center">
+      <button class="btn btn-secondary" id="zoom-out-btn" title="Zoom out">&minus;</button>
+      <span class="muted small" id="zoom-level" style="min-width:40px;text-align:center">${Math.round(directoryZoom * 100)}%</span>
+      <button class="btn btn-secondary" id="zoom-in-btn" title="Zoom in">+</button>
+      <button class="btn btn-secondary" id="zoom-reset-btn" title="Reset zoom">Reset</button>
+    </div>`;
 
   pageBody.innerHTML = `
     <div class="library-header">
       <h1>Directory</h1>
-      <div class="row" style="gap:10px">
+      <div class="row" style="gap:10px;flex-wrap:wrap">
         <input id="directory-search" class="ef-input" placeholder="Search name, role, department..." value="${escapeAttr(directorySearchQuery)}" style="max-width:240px">
+        ${zoomControlsHtml}
         ${CURRENT_VIEWER
           ? `<button class="btn btn-secondary" id="add-person-btn">+ Add person</button>`
           : `<button class="btn btn-secondary" id="add-person-btn" disabled title="Log in to add a person">+ Add person</button>`}
@@ -2460,6 +2474,21 @@ function renderDirectory() {
 
   document.getElementById("directory-search").addEventListener("input", (e) => {
     directorySearchQuery = e.target.value;
+    renderDirectory();
+  });
+  const zoomOutBtn = document.getElementById("zoom-out-btn");
+  if (zoomOutBtn) zoomOutBtn.addEventListener("click", () => {
+    directoryZoom = Math.max(DIRECTORY_ZOOM_MIN, Math.round((directoryZoom - 0.1) * 10) / 10);
+    renderDirectory();
+  });
+  const zoomInBtn = document.getElementById("zoom-in-btn");
+  if (zoomInBtn) zoomInBtn.addEventListener("click", () => {
+    directoryZoom = Math.min(DIRECTORY_ZOOM_MAX, Math.round((directoryZoom + 0.1) * 10) / 10);
+    renderDirectory();
+  });
+  const zoomResetBtn = document.getElementById("zoom-reset-btn");
+  if (zoomResetBtn) zoomResetBtn.addEventListener("click", () => {
+    directoryZoom = 1;
     renderDirectory();
   });
   const addBtn = document.getElementById("add-person-btn");
