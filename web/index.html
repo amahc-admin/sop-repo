@@ -362,6 +362,11 @@
   .org-card { display: inline-flex; flex-direction: column; gap: 2px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 14px; min-width: 200px; max-width: 320px; text-align: left; }
   .org-card .org-name { font: 700 14px Barlow, sans-serif; color: var(--text-primary); }
 
+  /* A department cluster label, standing in for a person node when a
+     manager's direct reports split across more than one department --
+     see renderOrgChildren(). */
+  .org-group-label { font: 700 12px Barlow, sans-serif; color: var(--text-secondary); background: var(--card-bg); border: 1px solid var(--border-strong); border-radius: 999px; padding: 6px 16px; white-space: nowrap; }
+
   /* Each node is a circular photo (initials if none) with its role
      underneath -- hovering or tapping it reveals an .org-card with the
      full details (name, department, contact, notes). */
@@ -2343,6 +2348,31 @@ function directoryActionsHtml(p) {
   return "";
 }
 
+// Renders a person's direct reports. When they belong to more than one
+// department, groups them under a labeled sub-branch per department
+// (e.g. Ross's reports split into an "Operations" cluster and an
+// "Installations" cluster) instead of one flat, mixed row -- using the
+// same <li>/.org-branch structure a person node uses, so the existing
+// connector-line CSS handles the extra tier for free. If everyone
+// shares one department, there's nothing to clarify, so it skips
+// straight to a flat row like before.
+function renderOrgChildren(kids, childrenOf) {
+  if (!kids.length) return "";
+  const deptIds = [...new Set(kids.map((k) => k.department))];
+  if (deptIds.length <= 1) {
+    return `<ul class="org-branch">${kids.map((c) => renderOrgNode(c, childrenOf)).join("")}</ul>`;
+  }
+  const groups = deptIds.map((deptId) => {
+    const dept = getDepartment(deptId);
+    const groupKids = kids.filter((k) => k.department === deptId).sort((a, b) => a.name.localeCompare(b.name));
+    return `<li>
+      <div class="org-group-label">${escapeHtml(dept ? dept.name : deptId)}</div>
+      <ul class="org-branch">${groupKids.map((c) => renderOrgNode(c, childrenOf)).join("")}</ul>
+    </li>`;
+  }).join("");
+  return `<ul class="org-branch">${groups}</ul>`;
+}
+
 // A tree node shows just a circular photo (or initials if none) --
 // hovering it (or tapping it, for touch screens with no hover) reveals
 // the full details in a popover. The popover is a descendant of the
@@ -2370,7 +2400,7 @@ function renderOrgNode(p, childrenOf) {
         </div>
       </div>
     </div>
-    ${kids.length ? `<ul class="org-branch">${kids.map((c) => renderOrgNode(c, childrenOf)).join("")}</ul>` : ""}
+    ${renderOrgChildren(kids, childrenOf)}
   </li>`;
 }
 
