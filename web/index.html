@@ -476,7 +476,7 @@
 
 <div class="app-shell" id="app-shell">
   <header class="topbar">
-    <button class="theme-toggle" id="nav-back-btn" title="Back" aria-label="Back" disabled>&#8592;</button>
+    <button class="theme-toggle" id="nav-back-btn" title="Back" aria-label="Back">&#8592;</button>
     <a class="brand" id="brand-link"><span class="brand-mark">&#127921;</span> Cave <strong>&nbsp;Handbook</strong></a>
     <nav class="topnav" id="topnav">
       <a data-route="/">Home</a>
@@ -878,9 +878,11 @@ function pushNav() {
   if (NAV_STACK[NAV_STACK.length - 1] !== h) NAV_STACK.push(h);
   if (NAV_STACK.length > 50) NAV_STACK.shift();
 }
-function updateBackButton() {
-  document.getElementById("nav-back-btn").disabled = NAV_STACK.length <= 1;
-}
+// Always clickable, even with no in-app history yet (fresh page load or
+// a direct/shared link) -- it just goes Home in that case, rather than
+// being disabled and looking broken. NAV_STACK only lives in memory, so
+// a page refresh always starts it empty regardless of where the browser
+// itself has actually been.
 function goBack() {
   if (NAV_STACK.length > 1) {
     NAV_STACK.pop();
@@ -1005,7 +1007,6 @@ function render() {
   const { path, params } = parseHash();
   window.scrollTo(0, 0);
   pushNav();
-  updateBackButton();
   document.querySelectorAll("#topnav a").forEach((a) => a.classList.remove("active"));
   if (path === "/") {
     appShell.style.display = "block"; runRoot.style.display = "none";
