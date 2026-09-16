@@ -1723,14 +1723,19 @@ function renderQueue() {
     scopeNoteHtml = `<p class="muted small" style="margin-bottom:20px">Couldn't match &ldquo;${escapeHtml(CURRENT_VIEWER.lastName)}&rdquo; to anyone in the Directory, so this shows everything.</p>`;
   }
 
-  const draftSops = SOPS.filter((s) => s.status === "draft" && (!effectiveFilter || effectiveFilter.has(s.department))).sort((a, b) => (b.id > a.id ? 1 : -1));
+  // Anything that isn't "current" needs an Admin's Approve -- not just
+  // brand-new drafts, but SOPs bumped back to review-due/overdue by an
+  // edit (edit_sop/approve_sop_edit always do this). Same condition the
+  // SOP detail page already uses to decide whether to show its own
+  // Approve button.
+  const draftSops = SOPS.filter((s) => s.status !== "current" && (!effectiveFilter || effectiveFilter.has(s.department))).sort((a, b) => (b.id > a.id ? 1 : -1));
   const sopRows = draftSops.length
     ? draftSops.map((sop) => {
         const dept = getDepartment(sop.department);
         return `<div class="review-item">
           <div class="suggestion-meta">
             <span class="suggestion-dept">${escapeHtml(sop.owner.name)}</span>
-            <span class="suggestion-status suggestion-status-pending">Draft</span>
+            <span class="badge badge-${sop.status}">${statusMeta(sop.status).label}</span>
             ${sop.sourceDocumentUrl ? `<span class="badge badge-draft">Uploaded document</span>` : ""}
           </div>
           <div class="target" data-sop="${sop.id}">${escapeHtml(sop.title)}${dept ? " &middot; " + escapeHtml(dept.name) : ""}</div>
@@ -1740,7 +1745,7 @@ function renderQueue() {
           </div>
         </div>`;
       }).join("")
-    : `<div class="empty-state">No new SOPs waiting on approval.</div>`;
+    : `<div class="empty-state">No SOPs waiting on approval.</div>`;
 
   const draftPeople = DIRECTORY.filter((p) => p.status === "draft" && (!effectiveFilter || effectiveFilter.has(p.department))).sort((a, b) => (b.id > a.id ? 1 : -1));
   const peopleRows = draftPeople.length
@@ -1762,7 +1767,7 @@ function renderQueue() {
   pageBody.innerHTML = `
     <h1 style="margin-bottom:6px">My Queue</h1>
     ${scopeNoteHtml}
-    <div class="library-header"><h2>New SOPs awaiting approval (${draftSops.length})</h2></div>
+    <div class="library-header"><h2>SOPs awaiting approval (${draftSops.length})</h2></div>
     <div id="queue-sop-list">${sopRows}</div>
     <div class="library-header" style="margin-top:32px"><h2>New directory entries awaiting approval (${draftPeople.length})</h2></div>
     <div id="queue-person-list">${peopleRows}</div>
