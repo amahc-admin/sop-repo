@@ -271,6 +271,7 @@
   .blackout-banner ul { margin: 0; padding-left: 18px; }
   .blackout-banner li { font: 600 14px/1.5 Barlow, sans-serif; margin-bottom: 4px; }
   .document-embed { width: 100%; height: 70vh; min-height: 420px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+  .document-embed-inline { width: 100%; height: 360px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
   .document-embed-img { width: 100%; max-height: 70vh; object-fit: contain; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
   .document-open-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 18px; background: var(--card-bg); font: 600 14px Barlow, sans-serif; }
   .doc-download-link { display: inline-block; margin-top: 8px; font: 600 12.5px Barlow, sans-serif; text-decoration: underline; cursor: pointer; color: var(--text-secondary); }
@@ -2099,9 +2100,19 @@ function renderSopDetail(id) {
       const name = typeof f === "string" ? f : f.name;
       const href = typeof f === "string" ? null : f.href;
       const flag = href ? "" : `<span class="form-flag" title="Not yet connected to an actual document">Not linked</span>`;
-      return href
-        ? `<li><a href="${href}" target="_blank" rel="noopener">&#128196; ${name}</a></li>`
-        : `<li><a>&#128196; ${name}${flag}</a></li>`;
+      const loomMatch = href ? /loom\.com\/share\/([a-zA-Z0-9]+)/.exec(href) : null;
+      const linkLine = href
+        ? `<li><a href="${href}" target="_blank" rel="noopener">${loomMatch ? "&#127909;" : "&#128196;"} ${escapeHtml(name)}</a></li>`
+        : `<li><a>&#128196; ${escapeHtml(name)}${flag}</a></li>`;
+      // Loom explicitly supports third-party embedding via its /embed/
+      // URL -- other links (Claude artifacts included) just stay a
+      // plain link, since most link destinations either can't be framed
+      // or aren't meant to be (a page you're meant to navigate to, not
+      // watch inline).
+      const embedLine = loomMatch
+        ? `<li class="forms-embed"><iframe src="https://www.loom.com/embed/${loomMatch[1]}" class="document-embed-inline" allow="autoplay; fullscreen" allowfullscreen title="${escapeAttr(name)}"></iframe></li>`
+        : "";
+      return linkLine + embedLine;
     }).join("");
     formsHtml = `<div class="section" id="section-forms"><h2>Forms</h2><ul class="forms-list">${formItems}</ul></div>`;
   }
@@ -2837,6 +2848,11 @@ function renderSopNewDocument() {
     <div class="edit-field"><label>Document <span class="muted small">(PDF, Word doc, or an image of a printed procedure)</span></label><input type="file" id="doc-file" accept=".pdf,.doc,.docx,.txt,image/*"></div>
     <div class="edit-field"><label>Or paste a link instead <span class="muted small">(Claude artifact, Loom video, or any URL)</span></label><input type="url" id="doc-link" class="ef-input" placeholder="https://..."></div>
 
+    <details class="edit-details">
+      <summary>Additional links (optional)</summary>
+      <div class="edit-field"><label>Related links <span class="muted small">(a Loom walkthrough, a related document, etc.)</span></label>${kvEditorHtml("forms-editor", [], "Name (e.g. Loom walkthrough)", "Link URL", "+ Add link")}</div>
+    </details>
+
     <div class="edit-actions">
       <button class="btn btn-secondary" id="doc-cancel">Cancel</button>
       <button class="btn btn-primary" id="doc-submit">Submit document</button>
@@ -2854,6 +2870,7 @@ function renderSopNewDocument() {
   document.getElementById("crumb-lib4").addEventListener("click", () => go("/library"));
   document.getElementById("doc-cancel").addEventListener("click", () => go("/library"));
   document.getElementById("switch-to-form").addEventListener("click", () => go("/new"));
+  wireKvEditors();
 
   const submitBtn = document.getElementById("doc-submit");
   const statusEl = document.getElementById("doc-status");
@@ -2882,9 +2899,10 @@ function renderSopNewDocument() {
         fileUrl = linkVal;
         fileName = null;
       }
+      const forms = readFormsKvEditor("forms-editor");
       newSopId = await API.addSopDocument(
         CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName,
-        departmentTag, title, fileUrl, fileName, notes || null
+        departmentTag, title, fileUrl, fileName, notes || null, forms
       );
       const addedBy = CURRENT_VIEWER.lastName;
       SOPS.push({
@@ -2893,7 +2911,7 @@ function renderSopNewDocument() {
         lastReviewed: null, nextReview: null, version: "v1 (draft)",
         subtitle: "Hosted as an uploaded document.",
         beforeYouStart: [], toolsSystems: [], signedOffBy: [], relatedIds: [],
-        forms: [], successCriteria: [], escalation: [],
+        forms, successCriteria: [], escalation: [],
         steps: [{
           title: "Uploaded document",
           body: notes || "See the attached document.",

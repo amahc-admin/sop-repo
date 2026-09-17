@@ -96,10 +96,12 @@ const API = (() => {
     },
     // Skips the structured form -- attaches a raw file instead, pending
     // an Admin converting it into a full SOP (see 0009_sop_document_upload.sql).
-    addSopDocument(loginId, passcode, lastName, departmentTag, title, fileUrl, fileName, notes) {
+    // forms is optional supplementary links (Loom video, related doc, etc.
+    // -- see 0013_add_sop_document_forms.sql).
+    addSopDocument(loginId, passcode, lastName, departmentTag, title, fileUrl, fileName, notes, forms) {
       return rpc("add_sop_document", {
         p_login_id: loginId, p_passcode: passcode, p_last_name: lastName, p_department_tag: departmentTag,
-        p_title: title, p_file_url: fileUrl, p_file_name: fileName, p_notes: notes,
+        p_title: title, p_file_url: fileUrl, p_file_name: fileName, p_notes: notes, p_forms: forms || [],
       });
     },
     uploadSopDocument(file) {
