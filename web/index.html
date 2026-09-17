@@ -1927,6 +1927,49 @@ function renderQueue() {
 }
 
 /* ============================== SOP DETAIL ============================== */
+// Decides how to present an attached document/link: a real embed when the
+// destination allows being framed, otherwise a plain "Open" card. Claude
+// artifact pages set frame-ancestors 'self' in their CSP -- they can
+// never be embedded on another site, only linked to, so that's a card,
+// not an iframe. Loom's /share/ links get rewritten to their dedicated
+// /embed/ URL, which Loom explicitly supports framing for.
+function documentEmbedHtml(url, name) {
+  let hostname = "";
+  try { hostname = new URL(url).hostname; } catch (e) {}
+  const label = name || "Document";
+
+  if (/(^|\.)claude\.ai$/.test(hostname)) {
+    return {
+      embedHtml: `<div class="document-open-card"><span>&#129513; Claude Artifact${name ? ": " + escapeHtml(name) : ""}</span><a class="btn btn-primary" href="${url}" target="_blank" rel="noopener">Open artifact</a></div>`,
+      showOpenLink: false,
+    };
+  }
+  const loomMatch = /loom\.com\/share\/([a-zA-Z0-9]+)/.exec(url);
+  if (loomMatch) {
+    const embedUrl = `https://www.loom.com/embed/${loomMatch[1]}`;
+    return {
+      embedHtml: `<iframe src="${embedUrl}" class="document-embed" allow="autoplay; fullscreen" allowfullscreen title="${escapeAttr(label)}"></iframe>`,
+      showOpenLink: true,
+    };
+  }
+  const ext = (name || url).split(".").pop().toLowerCase();
+  if (ext === "pdf") {
+    return {
+      embedHtml: `<iframe src="${url}" class="document-embed" title="${escapeAttr(label)}"></iframe>`,
+      showOpenLink: true,
+    };
+  }
+  if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
+    return {
+      embedHtml: `<img src="${url}" class="document-embed-img" alt="${escapeAttr(label)}">`,
+      showOpenLink: true,
+    };
+  }
+  return {
+    embedHtml: `<div class="document-open-card"><span>&#128196; ${escapeHtml(label)}</span><a class="btn btn-primary" href="${url}" target="_blank" rel="noopener">Open document</a></div>`,
+    showOpenLink: false,
+  };
+}
 function renderSopDetail(id) {
   const sop = getSop(id);
   if (!sop) {
@@ -1994,20 +2037,13 @@ function renderSopDetail(id) {
 
   let documentViewHtml = "";
   if (sop.sourceDocumentUrl) {
-    const ext = (sop.sourceDocumentName || sop.sourceDocumentUrl).split(".").pop().toLowerCase();
-    const isPdf = ext === "pdf";
-    const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
-    const embedHtml = isPdf
-      ? `<iframe src="${sop.sourceDocumentUrl}" class="document-embed" title="${escapeAttr(sop.sourceDocumentName || "Document")}"></iframe>`
-      : isImage
-      ? `<img src="${sop.sourceDocumentUrl}" class="document-embed-img" alt="${escapeAttr(sop.sourceDocumentName || "Document")}">`
-      : `<div class="document-open-card"><span>&#128196; ${escapeHtml(sop.sourceDocumentName || "Document")}</span><a class="btn btn-primary" href="${sop.sourceDocumentUrl}" target="_blank" rel="noopener">Open document</a></div>`;
+    const { embedHtml, showOpenLink } = documentEmbedHtml(sop.sourceDocumentUrl, sop.sourceDocumentName);
     const placeholderNote = sop.steps.find((s) => s.placeholder);
     documentViewHtml = `<div class="section" id="section-document">
       <h2>Document</h2>
       ${placeholderNote && placeholderNote.body ? `<p class="muted small" style="margin-bottom:10px">${escapeHtml(placeholderNote.body)}</p>` : ""}
       ${embedHtml}
-      ${!isPdf && !isImage ? "" : `<a class="doc-download-link" href="${sop.sourceDocumentUrl}" target="_blank" rel="noopener">Open in a new tab</a>`}
+      ${showOpenLink ? `<a class="doc-download-link" href="${sop.sourceDocumentUrl}" target="_blank" rel="noopener">Open in a new tab</a>` : ""}
     </div>`;
   }
 
@@ -2370,6 +2406,7 @@ function renderSopEdit(id) {
       </div>
       <input type="file" id="ef-doc-file" accept=".pdf,.doc,.docx,.txt,image/*">
       <p class="muted small" style="margin-top:6px">Choose a file to replace the current document (optional).</p>
+      <input type="url" id="ef-doc-link" class="ef-input" placeholder="Or paste a link instead (Claude artifact, Loom video, or any URL)" style="margin-top:8px">
     </div>
     <div class="edit-field"><label>Description</label><textarea id="ef-doc-description" rows="3" placeholder="A short description of this document">${escapeHtml(docDescription)}</textarea></div>
     ` : ""}
@@ -2488,6 +2525,7 @@ function renderSopEdit(id) {
 
     let docUrl, docName;
     const docFileInput = document.getElementById("ef-doc-file");
+    const docLinkVal = document.getElementById("ef-doc-link")?.value.trim();
     if (sop.sourceDocumentUrl && docFileInput && docFileInput.files[0]) {
       saveBtn.disabled = true;
       saveBtn.textContent = "Uploading document...";
@@ -2500,6 +2538,9 @@ function renderSopEdit(id) {
         statusEl.textContent = "Couldn't upload document: " + err.message;
         return;
       }
+    } else if (sop.sourceDocumentUrl && docLinkVal) {
+      docUrl = docLinkVal;
+      docName = null;
     } else if (sop.sourceDocumentUrl) {
       docUrl = sop.sourceDocumentUrl;
       docName = sop.sourceDocumentName;
@@ -2794,6 +2835,7 @@ function renderSopNewDocument() {
     <div class="edit-field"><label>Title</label><input id="doc-title" class="ef-input" placeholder="e.g. Restocking the showroom fridge"></div>
     <div class="edit-field"><label>Description <span class="muted small">(optional, but recommended)</span></label><textarea id="doc-notes" rows="3" placeholder="A short description of what this document covers"></textarea></div>
     <div class="edit-field"><label>Document <span class="muted small">(PDF, Word doc, or an image of a printed procedure)</span></label><input type="file" id="doc-file" accept=".pdf,.doc,.docx,.txt,image/*"></div>
+    <div class="edit-field"><label>Or paste a link instead <span class="muted small">(Claude artifact, Loom video, or any URL)</span></label><input type="url" id="doc-link" class="ef-input" placeholder="https://..."></div>
 
     <div class="edit-actions">
       <button class="btn btn-secondary" id="doc-cancel">Cancel</button>
@@ -2824,17 +2866,25 @@ function renderSopNewDocument() {
     if (!title) { statusEl.textContent = "Title can't be empty."; return; }
     const fileInput = document.getElementById("doc-file");
     const file = fileInput.files[0];
-    if (!file) { statusEl.textContent = "Attach a document before submitting."; return; }
+    const linkVal = document.getElementById("doc-link").value.trim();
+    if (!file && !linkVal) { statusEl.textContent = "Attach a document or paste a link before submitting."; return; }
 
     const notes = document.getElementById("doc-notes").value.trim();
     submitBtn.disabled = true;
-    submitBtn.textContent = "Uploading...";
+    submitBtn.textContent = file ? "Uploading..." : "Submitting...";
     statusEl.textContent = "";
     try {
-      const fileUrl = await API.uploadSopDocument(file);
+      let fileUrl, fileName;
+      if (file) {
+        fileUrl = await API.uploadSopDocument(file);
+        fileName = file.name;
+      } else {
+        fileUrl = linkVal;
+        fileName = null;
+      }
       newSopId = await API.addSopDocument(
         CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName,
-        departmentTag, title, fileUrl, file.name, notes || null
+        departmentTag, title, fileUrl, fileName, notes || null
       );
       const addedBy = CURRENT_VIEWER.lastName;
       SOPS.push({
@@ -2850,7 +2900,7 @@ function renderSopNewDocument() {
           type: "info",
           placeholder: true,
         }],
-        sourceDocumentUrl: fileUrl, sourceDocumentName: file.name,
+        sourceDocumentUrl: fileUrl, sourceDocumentName: fileName,
       });
       document.getElementById("doc-pending-modal").classList.add("show");
     } catch (err) {
