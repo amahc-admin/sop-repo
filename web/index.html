@@ -574,25 +574,9 @@ const DEPT_CODES = { operations: "OPS", sales: "SAL", cx: "CX", installations: "
 const LOGINS = [
   { id: "admin", name: "Admin", code: "ADM" },
   { id: "member", name: "Member", code: "MEM" },
-  { id: "vnc", name: "Accounts Admin", code: "VNC" },
 ];
-// isAdmin() reads whatever the login RPC returned (can_manage_sops),
-// falling back to the old id === "admin" check for a viewer cached in
-// localStorage from before that field existed. Being an admin-class
-// login doesn't mean unrestricted -- see canManageDept below, which
-// VNC's dept_scope narrows to a single department.
 function isAdmin(viewer) {
-  return !!viewer && (!!viewer.canManageSops || viewer.id === "admin");
-}
-// Admin-class logins can be scoped to a single department (deptScope,
-// from logins.dept_scope -- see 0012_vnc_accounts_admin_login.sql). null
-// means unrestricted. This is a UI-level restriction, same trust level
-// as the rest of this soft-identity app -- the RPCs themselves only
-// check can_manage_sops, not department.
-function canManageDept(deptId) {
-  if (!isAdmin(CURRENT_VIEWER)) return false;
-  const scope = CURRENT_VIEWER.deptScope;
-  return !scope || deptId === scope;
+  return !!viewer && viewer.id === "admin";
 }
 // CURRENT_VIEWER also carries `passcode` and `lastName` fields -- the
 // shared login passcode and the person's own last name (for attribution
@@ -641,9 +625,7 @@ function suggestionStatus(s) {
 // in delete_suggestion, not a hard security boundary).
 function canDeleteSuggestion(s) {
   if (!CURRENT_VIEWER) return false;
-  if (CURRENT_VIEWER.lastName === s.lastName) return true;
-  const sop = getSop(s.sopId);
-  return canManageDept(sop ? sop.department : null);
+  return isAdmin(CURRENT_VIEWER) || CURRENT_VIEWER.lastName === s.lastName;
 }
 function suggestionItemHtml(s) {
   const deleteBtn = canDeleteSuggestion(s)
@@ -1032,7 +1014,7 @@ function renderLoginGate() {
       loginBtn.textContent = "Checking...";
       try {
         const login = await API.login(gatePendingLoginId, passcode);
-        CURRENT_VIEWER = { id: login.id, name: login.name, code: login.code, passcode, lastName, canManageSops: !!login.can_manage_sops, deptScope: login.dept_scope || null };
+        CURRENT_VIEWER = { id: login.id, name: login.name, code: login.code, passcode, lastName };
         setViewer(CURRENT_VIEWER);
         gatePendingLoginId = null;
         updateViewerAvatar();
@@ -1137,7 +1119,7 @@ function renderHome() {
   } else if (!isAdmin(CURRENT_VIEWER)) {
     waiting = `<p class="muted small">SOP approvals are handled by an Admin.</p>`;
   } else {
-    const mine = SOPS.filter((s) => (s.status === "overdue" || s.status === "review-due") && canManageDept(s.department));
+    const mine = SOPS.filter((s) => s.status === "overdue" || s.status === "review-due");
     waiting = mine.length
       ? mine.map((s) => {
           const label = s.status === "overdue" ? "Sign off" : "Review due";
@@ -1349,8 +1331,6 @@ function renderSuggestionsPage() {
           actionHtml = `<button class="btn btn-secondary" disabled title="Log in as Admin to approve">Approve</button>`;
         } else if (!isAdmin(CURRENT_VIEWER)) {
           actionHtml = `<button class="btn btn-secondary" disabled title="Only an Admin can approve this">Approve</button>`;
-        } else if (!canManageDept(sop.department)) {
-          actionHtml = `<button class="btn btn-secondary" disabled title="Your Admin access doesn't cover ${escapeAttr(sopDept ? sopDept.name : sop.department)}">Approve</button>`;
         } else {
           actionHtml = `<button class="btn btn-secondary" data-approve="${s.id}">Approve</button>`;
         }
@@ -1491,8 +1471,6 @@ function editProposalsSectionHtml(deptFilterSet) {
           actionHtml = `<span class="review-note">This SOP no longer exists.</span>`;
         } else if (!isAdmin(CURRENT_VIEWER)) {
           actionHtml = `<button class="btn btn-secondary" disabled title="Only an Admin can decide this">Approve</button> <button class="btn btn-secondary" disabled title="Only an Admin can decide this">Reject</button>`;
-        } else if (!canManageDept(sop.department)) {
-          actionHtml = `<button class="btn btn-secondary" disabled title="Your Admin access doesn't cover this department">Approve</button> <button class="btn btn-secondary" disabled title="Your Admin access doesn't cover this department">Reject</button>`;
         } else {
           actionHtml = `<button class="btn btn-secondary" data-approve-edit="${p.id}">Approve</button> <button class="btn btn-danger" data-reject-edit="${p.id}">Reject</button>`;
         }
@@ -1639,8 +1617,6 @@ function directoryProposalsSectionHtml(deptFilterSet) {
           actionHtml = `<span class="review-note">This person no longer exists.</span>`;
         } else if (!isAdmin(CURRENT_VIEWER)) {
           actionHtml = `<button class="btn btn-secondary" disabled title="Only an Admin can decide this">Approve</button> <button class="btn btn-secondary" disabled title="Only an Admin can decide this">Reject</button>`;
-        } else if (!canManageDept(entry.department)) {
-          actionHtml = `<button class="btn btn-secondary" disabled title="Your Admin access doesn't cover this department">Approve</button> <button class="btn btn-secondary" disabled title="Your Admin access doesn't cover this department">Reject</button>`;
         } else {
           actionHtml = `<button class="btn btn-secondary" data-approve-dir-edit="${p.id}">Approve</button> <button class="btn btn-danger" data-reject-dir-edit="${p.id}">Reject</button>`;
         }
@@ -1792,17 +1768,11 @@ function renderQueue() {
     return;
   }
 
-  // deptScope (from logins.dept_scope, e.g. VNC's Accounts restriction) is
-  // a hard limit -- no toggle past it, unlike the "my teams" default
-  // below which is just a declutter.
-  const hardScope = CURRENT_VIEWER.deptScope;
-  const myDepts = hardScope ? new Set([hardScope]) : myManagedDepartments(CURRENT_VIEWER.lastName);
-  const effectiveFilter = hardScope ? myDepts : (myDepts && !queueShowAll ? myDepts : null);
+  const myDepts = myManagedDepartments(CURRENT_VIEWER.lastName);
+  const effectiveFilter = myDepts && !queueShowAll ? myDepts : null;
 
   let scopeNoteHtml = "";
-  if (hardScope) {
-    scopeNoteHtml = `<p class="muted small" style="margin-bottom:20px">Your Admin access is limited to <strong>${escapeHtml((getDepartment(hardScope) || {}).name || hardScope)}</strong>.</p>`;
-  } else if (myDepts) {
+  if (myDepts) {
     const deptNames = Array.from(myDepts).map((id) => (getDepartment(id) || {}).name || id).join(", ");
     scopeNoteHtml = effectiveFilter
       ? `<p class="muted small" style="margin-bottom:20px">Showing pending items for your teams: <strong>${escapeHtml(deptNames)}</strong> (matched to &ldquo;${escapeHtml(CURRENT_VIEWER.lastName)}&rdquo; in the Directory) &middot; <a id="queue-show-all" style="text-decoration:underline;cursor:pointer">Show everything</a></p>`
@@ -1967,8 +1937,6 @@ function renderSopDetail(id) {
       approveHtml = `<button class="btn btn-secondary" id="approve-btn" disabled title="Log in as Admin to approve this SOP">Approve</button>`;
     } else if (!isAdmin(CURRENT_VIEWER)) {
       approveHtml = `<button class="btn btn-secondary" id="approve-btn" disabled title="Only an Admin can approve this SOP">Approve</button>`;
-    } else if (!canManageDept(sop.department)) {
-      approveHtml = `<button class="btn btn-secondary" id="approve-btn" disabled title="Your Admin access doesn't cover ${escapeAttr(dept.name)}">Approve</button>`;
     } else {
       approveHtml = `<button class="btn btn-secondary" id="approve-btn" title="Mark this SOP as reviewed and current">Approve this SOP</button>`;
     }
@@ -1977,7 +1945,7 @@ function renderSopDetail(id) {
   let editHtml = "";
   if (!CURRENT_VIEWER) {
     editHtml = `<button class="btn btn-secondary" id="edit-btn" disabled title="Log in to edit this SOP">Edit</button>`;
-  } else if (canManageDept(sop.department)) {
+  } else if (isAdmin(CURRENT_VIEWER)) {
     editHtml = `<button class="btn btn-secondary" id="edit-btn" title="Edit this SOP">Edit</button>`;
   } else {
     editHtml = `<button class="btn btn-secondary" id="edit-btn" title="Propose an edit for an Admin to review">Propose edit</button>`;
@@ -1988,8 +1956,6 @@ function renderSopDetail(id) {
     disapproveHtml = `<button class="btn btn-danger" id="disapprove-btn" disabled title="Log in as Admin to remove this SOP">Disapprove</button>`;
   } else if (!isAdmin(CURRENT_VIEWER)) {
     disapproveHtml = `<button class="btn btn-danger" id="disapprove-btn" disabled title="Only an Admin can remove this SOP">Disapprove</button>`;
-  } else if (!canManageDept(sop.department)) {
-    disapproveHtml = `<button class="btn btn-danger" id="disapprove-btn" disabled title="Your Admin access doesn't cover ${escapeAttr(dept.name)}">Disapprove</button>`;
   } else {
     disapproveHtml = `<button class="btn btn-danger" id="disapprove-btn" title="Remove this SOP permanently">Disapprove</button>`;
   }
@@ -2045,7 +2011,7 @@ function renderSopDetail(id) {
   if (pendingEdits.length) {
     pendingEditHtml = `<div class="never-banner" id="section-pending-edit">
       <span class="tag">Edit awaiting approval</span>
-      <span>${pendingEdits.length === 1 ? `${escapeHtml(pendingEdits[0].lastName)} proposed changes to this SOP` : `${pendingEdits.length} proposed edits`} &mdash; <a id="pending-edit-link" style="text-decoration:underline;cursor:pointer">review${canManageDept(sop.department) ? "" : " status"}</a></span>
+      <span>${pendingEdits.length === 1 ? `${escapeHtml(pendingEdits[0].lastName)} proposed changes to this SOP` : `${pendingEdits.length} proposed edits`} &mdash; <a id="pending-edit-link" style="text-decoration:underline;cursor:pointer">review${isAdmin(CURRENT_VIEWER) ? "" : " status"}</a></span>
     </div>`;
   }
 
@@ -2376,7 +2342,7 @@ function renderSopEdit(id) {
   }
 
   const f = fieldsFromSop(sop);
-  const memberProposing = !canManageDept(sop.department);
+  const memberProposing = !isAdmin(CURRENT_VIEWER);
   const placeholderStep = (sop.steps || []).find((s) => s.placeholder);
   const docDescription = placeholderStep ? placeholderStep.body || "" : "";
 
@@ -3068,14 +3034,13 @@ function buildDirectoryTree(entries) {
 }
 
 function directoryActionsHtml(p) {
-  const canManage = canManageDept(p.department);
   if (p.status === "draft") {
-    return canManage
+    return isAdmin(CURRENT_VIEWER)
       ? `<button class="btn btn-secondary" data-edit-person="${p.id}">Edit</button> <button class="btn btn-secondary" data-approve-person="${p.id}">Approve</button> <button class="btn btn-danger" data-remove-person="${p.id}">Remove</button>`
       : `<span class="muted small">Awaiting Admin approval</span>`;
   }
   if (CURRENT_VIEWER) {
-    return `<button class="btn btn-secondary" data-edit-person="${p.id}">Edit</button>${canManage ? ` <button class="btn btn-danger" data-remove-person="${p.id}">Remove</button>` : ""}`;
+    return `<button class="btn btn-secondary" data-edit-person="${p.id}">Edit</button>${isAdmin(CURRENT_VIEWER) ? ` <button class="btn btn-danger" data-remove-person="${p.id}">Remove</button>` : ""}`;
   }
   return "";
 }
@@ -3397,7 +3362,7 @@ function renderDirectoryEdit(id) {
     return;
   }
 
-  const memberProposing = !canManageDept(p.department);
+  const memberProposing = !isAdmin(CURRENT_VIEWER);
   const deptOptions = DEPARTMENTS.map((d) => `<option value="${d.id}" ${d.id === p.department ? "selected" : ""}>${d.name}</option>`).join("");
 
   pageBody.innerHTML = `
