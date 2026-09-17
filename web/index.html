@@ -723,6 +723,12 @@ function getSop(id) { return SOPS.find((s) => s.id === id); }
 function getDepartment(id) { return DEPARTMENTS.find((d) => d.id === id); }
 function sopsByDepartment(deptId) { return SOPS.filter((s) => s.department === deptId); }
 function statusMeta(statusId) { return STATUSES.find((s) => s.id === statusId); }
+// sop.version was stored as a single string baked in at creation time
+// (e.g. "v1 (draft)") and nothing ever updates it when the SOP is later
+// approved/edited -- it just goes stale ("(draft)" shown next to an
+// already-Current badge). The status badge is the live source of truth,
+// so this only ever shows the plain "v1" part.
+function versionLabel(v) { return (v || "").replace(/\s*\([^)]*\)\s*$/, "").trim(); }
 
 /* ============================== SOP HISTORY (approvals + edits) ============================== */
 let EVENTS = []; // populated from the sop_events table at boot (see loadData())
@@ -2152,7 +2158,7 @@ function renderSopDetail(id) {
         <div class="row" style="gap:10px;margin-bottom:10px;">
           <span class="badge badge-${sop.status}">${statusMeta(sop.status).label}</span>
           <span class="faint small">${sop.sopId || ""}</span>
-          <span class="faint small">${sop.version || ""}</span>
+          <span class="faint small">${versionLabel(sop.version)}</span>
           ${sop.confidential ? `<span class="confidential-note">&#128274; Confidential</span>` : ""}
         </div>
         <h1>${sop.title}</h1>
