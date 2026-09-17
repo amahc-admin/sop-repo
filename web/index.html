@@ -1396,7 +1396,7 @@ let EDIT_PROPOSALS = []; // populated from sop_edit_proposals at boot (see boot(
 const EDIT_FIELD_LABELS = {
   title: "Title", subtitle: "Subtitle", never_do_this: "Never do this",
   before_you_start: "Before you start", tools_systems: "Tools & systems", steps: "Steps",
-  success_criteria: "Success criteria", escalation: "Escalation path", forms: "Forms",
+  success_criteria: "Success criteria", escalation: "Escalation path", forms: "Walkthroughs & Forms",
   source_document_url: "Document", source_document_name: "Document name",
 };
 const EDIT_FIELD_CAMEL = {
@@ -2114,7 +2114,7 @@ function renderSopDetail(id) {
         : "";
       return linkLine + embedLine;
     }).join("");
-    formsHtml = `<div class="section" id="section-forms"><h2>Forms</h2><ul class="forms-list">${formItems}</ul></div>`;
+    formsHtml = `<div class="section" id="section-forms"><h2>Walkthroughs &amp; Forms</h2><ul class="forms-list">${formItems}</ul></div>`;
   }
 
   let relatedHtml = "";
@@ -2131,7 +2131,7 @@ function renderSopDetail(id) {
     realSteps.length ? `<li><a href="#section-steps">Steps</a></li>` : "",
     sop.successCriteria && sop.successCriteria.length ? `<li><a href="#section-success">Success criteria</a></li>` : "",
     sop.escalation && sop.escalation.length ? `<li><a href="#section-escalation">Escalation path</a></li>` : "",
-    sop.forms && sop.forms.length ? `<li><a href="#section-forms">Forms</a></li>` : "",
+    sop.forms && sop.forms.length ? `<li><a href="#section-forms">Walkthroughs &amp; Forms</a></li>` : "",
     sop.relatedIds && sop.relatedIds.length ? `<li><a href="#section-related">Related</a></li>` : "",
     `<li><a href="#section-suggestions">Suggestions &amp; feedback</a></li>`,
   ].join("");
@@ -2436,7 +2436,7 @@ function renderSopEdit(id) {
       <div class="edit-field"><label>Never do this</label><input id="ef-never" class="ef-input" value="${escapeAttr(f.neverDoThis)}"></div>
       <div class="edit-field"><label>Tools &amp; systems</label>${kvEditorHtml("tools-editor", toolsRows(f.toolsSystems), "Tool or system name", "Note (optional)", "+ Add tool or system")}</div>
       <div class="edit-field"><label>Escalation path</label>${kvEditorHtml("escalation-editor", escalationRows(f.escalation), "When", "Action", "+ Add escalation step")}</div>
-      <div class="edit-field"><label>Forms</label>${kvEditorHtml("forms-editor", formsKvRows(f.forms), "Form or document name", "Link URL (optional)", "+ Add form")}</div>
+      <div class="edit-field"><label>Walkthroughs &amp; Forms</label>${kvEditorHtml("forms-editor", formsKvRows(f.forms), "Name (e.g. Loom walkthrough)", "Link URL (optional)", "+ Add link")}</div>
     </details>
 
     <div class="edit-actions">
@@ -2667,7 +2667,7 @@ function renderSopNew() {
       <div class="edit-field"><label>Never do this</label><input id="ef-never" class="ef-input"></div>
       <div class="edit-field"><label>Tools &amp; systems</label>${kvEditorHtml("tools-editor", [], "Tool or system name", "Note (optional)", "+ Add tool or system")}</div>
       <div class="edit-field"><label>Escalation path</label>${kvEditorHtml("escalation-editor", [], "When", "Action", "+ Add escalation step")}</div>
-      <div class="edit-field"><label>Forms</label>${kvEditorHtml("forms-editor", [], "Form or document name", "Link URL (optional)", "+ Add form")}</div>
+      <div class="edit-field"><label>Walkthroughs &amp; Forms</label>${kvEditorHtml("forms-editor", [], "Name (e.g. Loom walkthrough)", "Link URL (optional)", "+ Add link")}</div>
     </details>
 
     <div class="edit-actions">
@@ -2849,8 +2849,8 @@ function renderSopNewDocument() {
     <div class="edit-field"><label>Or paste a link instead <span class="muted small">(Claude artifact, Loom video, or any URL)</span></label><input type="url" id="doc-link" class="ef-input" placeholder="https://..."></div>
 
     <details class="edit-details">
-      <summary>Additional links (optional)</summary>
-      <div class="edit-field"><label>Related links <span class="muted small">(a Loom walkthrough, a related document, etc.)</span></label>${kvEditorHtml("forms-editor", [], "Name (e.g. Loom walkthrough)", "Link URL", "+ Add link")}</div>
+      <summary>Walkthroughs &amp; Forms (optional)</summary>
+      <div class="edit-field"><label>Walkthroughs &amp; Forms <span class="muted small">(a Loom walkthrough, a related document, etc.)</span></label>${kvEditorHtml("forms-editor", [], "Name (e.g. Loom walkthrough)", "Link URL", "+ Add link")}</div>
     </details>
 
     <div class="edit-actions">
