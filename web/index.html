@@ -1441,14 +1441,21 @@ let editProposalFilter = "pending";
 // used by renderQueue()'s "my teams" view. The Suggestions page calls this
 // with no argument and sees everything, same as before.
 function editProposalsSectionHtml(deptFilterSet) {
-  const all = (deptFilterSet ? EDIT_PROPOSALS.filter((p) => { const sop = getSop(p.sopId); return sop && deptFilterSet.has(sop.department); }) : EDIT_PROPOSALS).slice().sort((a, b) => b.ts - a.ts);
+  const all = EDIT_PROPOSALS.slice().sort((a, b) => b.ts - a.ts);
+  // deptFilterSet (My Queue's "my teams" scoping) only narrows what counts
+  // as needing MY attention -- Pending. Approved/Rejected/All stay a
+  // complete cross-department record, since those are already-decided
+  // history, not an action queue -- otherwise an approved/rejected item
+  // outside your own department would just vanish from view entirely.
+  const inScope = (p) => !deptFilterSet || (getSop(p.sopId) && deptFilterSet.has(getSop(p.sopId).department));
+  const pendingScoped = all.filter((p) => p.status === "pending" && inScope(p));
   const counts = {
     all: all.length,
-    pending: all.filter((p) => p.status === "pending").length,
+    pending: pendingScoped.length,
     approved: all.filter((p) => p.status === "approved").length,
     rejected: all.filter((p) => p.status === "rejected").length,
   };
-  const list = editProposalFilter === "all" ? all : all.filter((p) => p.status === editProposalFilter);
+  const list = editProposalFilter === "pending" ? pendingScoped : editProposalFilter === "all" ? all : all.filter((p) => p.status === editProposalFilter);
   const filterDefs = [
     { id: "pending", label: "Pending" },
     { id: "approved", label: "Approved" },
@@ -1587,14 +1594,18 @@ let directoryProposalFilter = "pending";
 // deptFilterSet: see editProposalsSectionHtml above -- same idea, scoped by
 // the directory entry's own department instead of a SOP's.
 function directoryProposalsSectionHtml(deptFilterSet) {
-  const all = (deptFilterSet ? DIRECTORY_EDIT_PROPOSALS.filter((p) => { const entry = DIRECTORY.find((x) => x.id === p.entryId); return entry && deptFilterSet.has(entry.department); }) : DIRECTORY_EDIT_PROPOSALS).slice().sort((a, b) => b.ts - a.ts);
+  const all = DIRECTORY_EDIT_PROPOSALS.slice().sort((a, b) => b.ts - a.ts);
+  // See the matching comment in editProposalsSectionHtml -- deptFilterSet
+  // only narrows Pending; Approved/Rejected/All stay the full history.
+  const inScope = (p) => !deptFilterSet || (DIRECTORY.find((x) => x.id === p.entryId) && deptFilterSet.has(DIRECTORY.find((x) => x.id === p.entryId).department));
+  const pendingScoped = all.filter((p) => p.status === "pending" && inScope(p));
   const counts = {
     all: all.length,
-    pending: all.filter((p) => p.status === "pending").length,
+    pending: pendingScoped.length,
     approved: all.filter((p) => p.status === "approved").length,
     rejected: all.filter((p) => p.status === "rejected").length,
   };
-  const list = directoryProposalFilter === "all" ? all : all.filter((p) => p.status === directoryProposalFilter);
+  const list = directoryProposalFilter === "pending" ? pendingScoped : directoryProposalFilter === "all" ? all : all.filter((p) => p.status === directoryProposalFilter);
   const filterDefs = [
     { id: "pending", label: "Pending" },
     { id: "approved", label: "Approved" },
