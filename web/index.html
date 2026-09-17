@@ -1285,7 +1285,12 @@ function renderCards() {
   if (libState.status !== "all") list = list.filter((s) => s.status === libState.status);
   if (librarySearchQuery.trim()) {
     const q = librarySearchQuery.toLowerCase();
-    list = list.filter((s) => s.title.toLowerCase().includes(q) || (s.subtitle || "").toLowerCase().includes(q));
+    list = list.filter((s) => {
+      const dept = getDepartment(s.department);
+      return s.title.toLowerCase().includes(q)
+        || (s.subtitle || "").toLowerCase().includes(q)
+        || (dept && dept.name.toLowerCase().includes(q));
+    });
   }
   const el = document.getElementById("sop-container");
   if (!el) return;
