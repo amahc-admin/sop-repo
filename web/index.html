@@ -2038,11 +2038,11 @@ function renderSopDetail(id) {
 
   let documentViewHtml = "";
   if (sop.sourceDocumentUrl) {
+    // The description itself is sop.subtitle now (shown right under the
+    // title, same as any other SOP), not repeated here.
     const { embedHtml, showOpenLink } = documentEmbedHtml(sop.sourceDocumentUrl, sop.sourceDocumentName);
-    const placeholderNote = sop.steps.find((s) => s.placeholder);
     documentViewHtml = `<div class="section" id="section-document">
       <h2>Document</h2>
-      ${placeholderNote && placeholderNote.body ? `<p class="muted small" style="margin-bottom:10px">${escapeHtml(placeholderNote.body)}</p>` : ""}
       ${embedHtml}
       ${showOpenLink ? `<a class="doc-download-link" href="${sop.sourceDocumentUrl}" target="_blank" rel="noopener">Open in a new tab</a>` : ""}
     </div>`;
@@ -2407,7 +2407,7 @@ function renderSopEdit(id) {
     ${memberProposing ? `<p class="muted small" style="margin-bottom:14px">Your changes will be submitted as a proposal &mdash; an Admin needs to approve them before they go live.</p>` : ""}
 
     <div class="edit-field"><label>Title</label><input id="ef-title" class="ef-input" value="${escapeAttr(f.title)}"></div>
-    <div class="edit-field"><label>Subtitle</label><input id="ef-subtitle" class="ef-input" value="${escapeAttr(f.subtitle)}"></div>
+    ${!sop.sourceDocumentUrl ? `<div class="edit-field"><label>Subtitle</label><input id="ef-subtitle" class="ef-input" value="${escapeAttr(f.subtitle)}"></div>` : ""}
     ${sop.sourceDocumentUrl ? `
     <div class="edit-field">
       <label>Document</label>
@@ -2558,16 +2558,20 @@ function renderSopEdit(id) {
     }
     // The placeholder step (its "description") isn't part of the Steps
     // editor -- re-inserted here from the dedicated Description field so
-    // it survives the save, ahead of whatever real steps were added.
+    // it survives the save, ahead of whatever real steps were added. That
+    // same description doubles as the subtitle (there's no separate
+    // Subtitle field for a document SOP) so it actually shows up on the
+    // Library card, not just on the SOP page itself.
     let finalSteps = steps;
+    let docDescriptionVal;
     if (sop.sourceDocumentUrl) {
-      const description = document.getElementById("ef-doc-description").value.trim();
-      finalSteps = [{ title: "Uploaded document", body: description, type: "info", placeholder: true }, ...steps];
+      docDescriptionVal = document.getElementById("ef-doc-description").value.trim();
+      finalSteps = [{ title: "Uploaded document", body: docDescriptionVal, type: "info", placeholder: true }, ...steps];
     }
 
     const fields = {
       title,
-      subtitle: document.getElementById("ef-subtitle").value.trim(),
+      subtitle: sop.sourceDocumentUrl ? (docDescriptionVal || "Hosted as an uploaded document.") : document.getElementById("ef-subtitle").value.trim(),
       beforeYouStart: linesOf(document.getElementById("ef-before")),
       toolsSystems: readKvEditor("tools-editor", "name", "note"),
       steps: finalSteps,
@@ -2909,7 +2913,7 @@ function renderSopNewDocument() {
         id: newSopId, title, department: departmentTag, status: "draft",
         owner: { name: addedBy, initials: initialsFrom(addedBy) },
         lastReviewed: null, nextReview: null, version: "v1 (draft)",
-        subtitle: "Hosted as an uploaded document.",
+        subtitle: notes || "Hosted as an uploaded document.",
         beforeYouStart: [], toolsSystems: [], signedOffBy: [], relatedIds: [],
         forms, successCriteria: [], escalation: [],
         steps: [{
