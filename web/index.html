@@ -1709,12 +1709,17 @@ function wireDirectoryProposalsSection(refresh) {
 // default. If nobody in the Directory shares that last name, or the
 // admin picks "Show everything", no filtering happens -- this never
 // silently hides anything, it's purely a default declutter.
+// Checks every word in the Directory entry's name, not just the last one
+// -- a person matches on their actual last name ("Allsop" -> "Ross
+// Allsop"), but this also lets a team-style entry like "VNC Team" match
+// on "VNC" typed at login, so a group with no single owner can still log
+// in as Admin and get scoped to their own team's queue.
 function findDirectoryPersonByLastName(lastName) {
   const norm = (lastName || "").trim().toLowerCase();
   if (!norm) return [];
   return DIRECTORY.filter((p) => {
-    const parts = (p.name || "").trim().split(/\s+/);
-    return (parts[parts.length - 1] || "").toLowerCase() === norm;
+    const parts = (p.name || "").trim().toLowerCase().split(/\s+/);
+    return parts.includes(norm);
   });
 }
 function directoryDescendants(personId) {
