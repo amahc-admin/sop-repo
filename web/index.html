@@ -1390,11 +1390,13 @@ const EDIT_FIELD_LABELS = {
   title: "Title", subtitle: "Subtitle", never_do_this: "Never do this",
   before_you_start: "Before you start", tools_systems: "Tools & systems", steps: "Steps",
   success_criteria: "Success criteria", escalation: "Escalation path", forms: "Forms",
+  source_document_url: "Document", source_document_name: "Document name",
 };
 const EDIT_FIELD_CAMEL = {
   title: "title", subtitle: "subtitle", never_do_this: "neverDoThis",
   before_you_start: "beforeYouStart", tools_systems: "toolsSystems", steps: "steps",
   success_criteria: "successCriteria", escalation: "escalation", forms: "forms",
+  source_document_url: "sourceDocumentUrl", source_document_name: "sourceDocumentName",
 };
 function formatFieldValue(v) {
   if (v === null || v === undefined) return "(none)";
@@ -2219,7 +2221,11 @@ function fieldsFromSop(sop) {
     neverDoThis: sop.neverDoThis || "",
     beforeYouStart: sop.beforeYouStart || [],
     toolsSystems: sop.toolsSystems || [],
-    steps: sop.steps || [],
+    // The placeholder step (see 0009/0010 migrations) isn't a real step --
+    // it's excluded here so the Steps editor only shows genuine content;
+    // renderSopEdit handles its "description" separately and re-inserts
+    // it into what actually gets saved.
+    steps: (sop.steps || []).filter((s) => !s.placeholder),
     successCriteria: sop.successCriteria || [],
     escalation: sop.escalation || [],
     forms: sop.forms || [],
@@ -2331,6 +2337,8 @@ function renderSopEdit(id) {
 
   const f = fieldsFromSop(sop);
   const memberProposing = !isAdmin(CURRENT_VIEWER);
+  const placeholderStep = (sop.steps || []).find((s) => s.placeholder);
+  const docDescription = placeholderStep ? placeholderStep.body || "" : "";
 
   pageBody.innerHTML = `
     <div class="breadcrumb">
@@ -2342,10 +2350,22 @@ function renderSopEdit(id) {
 
     <div class="edit-field"><label>Title</label><input id="ef-title" class="ef-input" value="${escapeAttr(f.title)}"></div>
     <div class="edit-field"><label>Subtitle</label><input id="ef-subtitle" class="ef-input" value="${escapeAttr(f.subtitle)}"></div>
+    ${sop.sourceDocumentUrl ? `
+    <div class="edit-field">
+      <label>Document</label>
+      <div class="document-open-card" style="margin-bottom:10px">
+        <span>&#128196; ${escapeHtml(sop.sourceDocumentName || "Document")}</span>
+        <a class="btn btn-secondary" href="${sop.sourceDocumentUrl}" target="_blank" rel="noopener">View current</a>
+      </div>
+      <input type="file" id="ef-doc-file" accept=".pdf,.doc,.docx,.txt,image/*">
+      <p class="muted small" style="margin-top:6px">Choose a file to replace the current document (optional).</p>
+    </div>
+    <div class="edit-field"><label>Description</label><textarea id="ef-doc-description" rows="3" placeholder="A short description of this document">${escapeHtml(docDescription)}</textarea></div>
+    ` : ""}
     <div class="edit-field"><label>Before you start <span class="muted small">(one item per line)</span></label><textarea id="ef-before" rows="3">${escapeHtml(f.beforeYouStart.join("\n"))}</textarea></div>
 
     <div class="edit-field">
-      <label>Steps</label>
+      <label>Steps ${sop.sourceDocumentUrl ? `<span class="muted small">(optional &mdash; in addition to the document)</span>` : ""}</label>
       <div id="steps-editor">${f.steps.map((s, i) => stepEditBlockHtml(s, i)).join("")}</div>
       <button type="button" class="btn btn-secondary" id="add-step-btn">+ Add step</button>
     </div>
@@ -2453,20 +2473,51 @@ function renderSopEdit(id) {
 
     const title = document.getElementById("ef-title").value.trim();
     if (!title) { statusEl.textContent = "Title can't be empty."; return; }
-    if (!steps.length) { statusEl.textContent = "Add at least one step before saving."; return; }
+    if (!steps.length && !sop.sourceDocumentUrl) { statusEl.textContent = "Add at least one step before saving."; return; }
+
+    let docUrl, docName;
+    const docFileInput = document.getElementById("ef-doc-file");
+    if (sop.sourceDocumentUrl && docFileInput && docFileInput.files[0]) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Uploading document...";
+      try {
+        docUrl = await API.uploadSopDocument(docFileInput.files[0]);
+        docName = docFileInput.files[0].name;
+      } catch (err) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = memberProposing ? "Submit for approval" : "Save changes";
+        statusEl.textContent = "Couldn't upload document: " + err.message;
+        return;
+      }
+    } else if (sop.sourceDocumentUrl) {
+      docUrl = sop.sourceDocumentUrl;
+      docName = sop.sourceDocumentName;
+    }
+    // The placeholder step (its "description") isn't part of the Steps
+    // editor -- re-inserted here from the dedicated Description field so
+    // it survives the save, ahead of whatever real steps were added.
+    let finalSteps = steps;
+    if (sop.sourceDocumentUrl) {
+      const description = document.getElementById("ef-doc-description").value.trim();
+      finalSteps = [{ title: "Uploaded document", body: description, type: "info", placeholder: true }, ...steps];
+    }
 
     const fields = {
       title,
       subtitle: document.getElementById("ef-subtitle").value.trim(),
       beforeYouStart: linesOf(document.getElementById("ef-before")),
       toolsSystems: readKvEditor("tools-editor", "name", "note"),
-      steps,
+      steps: finalSteps,
       successCriteria: linesOf(document.getElementById("ef-success")),
       escalation: readKvEditor("escalation-editor", "when", "action"),
       forms: readFormsKvEditor("forms-editor"),
     };
     const neverVal = document.getElementById("ef-never").value.trim();
     fields.neverDoThis = neverVal || undefined;
+    if (sop.sourceDocumentUrl) {
+      fields.sourceDocumentUrl = docUrl;
+      fields.sourceDocumentName = docName;
+    }
 
     saveBtn.disabled = true;
     saveBtn.textContent = memberProposing ? "Submitting..." : "Saving...";
@@ -2481,6 +2532,10 @@ function renderSopEdit(id) {
       forms: fields.forms,
       never_do_this: neverVal || null,
     };
+    if (sop.sourceDocumentUrl) {
+      snakeFields.source_document_url = docUrl;
+      snakeFields.source_document_name = docName;
+    }
     try {
       if (memberProposing) {
         const proposalId = await API.proposeSopEdit(sop.id, CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, snakeFields);
@@ -2726,7 +2781,7 @@ function renderSopNewDocument() {
       </select>
     </div>
     <div class="edit-field"><label>Title</label><input id="doc-title" class="ef-input" placeholder="e.g. Restocking the showroom fridge"></div>
-    <div class="edit-field"><label>Notes for the Admin <span class="muted small">(optional)</span></label><textarea id="doc-notes" rows="3" placeholder="Anything the Admin should know before reviewing this"></textarea></div>
+    <div class="edit-field"><label>Description <span class="muted small">(optional, but recommended)</span></label><textarea id="doc-notes" rows="3" placeholder="A short description of what this document covers"></textarea></div>
     <div class="edit-field"><label>Document <span class="muted small">(PDF, Word doc, or an image of a printed procedure)</span></label><input type="file" id="doc-file" accept=".pdf,.doc,.docx,.txt,image/*"></div>
 
     <div class="edit-actions">
