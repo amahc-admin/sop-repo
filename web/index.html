@@ -415,6 +415,10 @@
   .se-move-btn { padding: 8px 12px; line-height: 1; }
   .se-move-btn:disabled { opacity: 0.35; cursor: default; }
   .se-insert-after { align-self: center; font-size: 12.5px; padding: 6px 12px; opacity: 0.85; }
+  .se-after-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .se-after-row .se-after-label { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
+  .se-after-row .se-after-mode { font: 400 13px Barlow, sans-serif; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-primary); }
+  .se-after-row .se-after-goto { width: 90px; font: 400 13px Barlow, sans-serif; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-primary); }
 
   /* Two-column "+ Add row" editor (Tools & systems, Escalation, Forms) */
   .kv-editor { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
@@ -2428,10 +2432,30 @@ function readDecisionOptions(wrap) {
     return opt;
   }).filter((o) => o.label);
 }
+// "After this step" control -- lets ANY step (not just a decision's own
+// options) say where Run mode goes next, so a step that's only ever
+// reached by one branch can finish or jump on its own instead of
+// falling through into the next branch's steps.
+function bindStepAfterControl(block) {
+  const modeSel = block.querySelector(".se-after-mode");
+  const gotoInput = block.querySelector(".se-after-goto");
+  modeSel.addEventListener("change", () => { gotoInput.style.display = modeSel.value === "goto" ? "inline-block" : "none"; });
+}
+function readStepAfter(block) {
+  const mode = block.querySelector(".se-after-mode").value;
+  if (mode === "finish") return "finish";
+  if (mode === "goto") {
+    const v = parseInt(block.querySelector(".se-after-goto").value, 10);
+    if (v) return v;
+  }
+  return undefined;
+}
 function stepEditBlockHtml(step, idx) {
   const st = step || { type: "info" };
   const itemsVal = (st.items || []).join("\n");
   const tags = st.tags || [];
+  const afterMode = st.afterStep === "finish" ? "finish" : typeof st.afterStep === "number" ? "goto" : "continue";
+  const afterGotoVal = typeof st.afterStep === "number" ? st.afterStep : "";
   return `<div class="step-edit-block" data-idx="${idx}">
     <div class="step-edit-row">
       <input class="se-phase" placeholder="Phase (optional)" value="${escapeAttr(st.phase || "")}">
@@ -2451,6 +2475,15 @@ function stepEditBlockHtml(step, idx) {
     </div>
     <div class="se-decision-wrap" style="display:${st.type === "decision" ? "block" : "none"}">
       ${decisionOptionsEditorHtml(st.options)}
+    </div>
+    <div class="se-after-row">
+      <span class="se-after-label">After this step (if not overridden by a decision option above):</span>
+      <select class="se-after-mode">
+        <option value="continue" ${afterMode === "continue" ? "selected" : ""}>Continue to next step</option>
+        <option value="finish" ${afterMode === "finish" ? "selected" : ""}>Finish &amp; sign off here</option>
+        <option value="goto" ${afterMode === "goto" ? "selected" : ""}>Jump to step #</option>
+      </select>
+      <input class="se-after-goto" type="number" min="1" placeholder="Step #" value="${afterGotoVal}" style="display:${afterMode === "goto" ? "inline-block" : "none"}">
     </div>
     <div class="se-tags">
       <label><input type="checkbox" class="se-tag-approval" ${tags.includes("approval") ? "checked" : ""}> Approval required</label>
@@ -2543,6 +2576,7 @@ function renderSopEdit(id) {
     const checklistWrap = block.querySelector(".se-checklist-wrap");
     const decisionWrap = block.querySelector(".se-decision-wrap");
     bindDecisionOptionsEditor(decisionWrap);
+    bindStepAfterControl(block);
     typeSel.addEventListener("change", () => {
       checklistWrap.style.display = typeSel.value === "checklist" ? "block" : "none";
       decisionWrap.style.display = typeSel.value === "decision" ? "block" : "none";
@@ -2600,6 +2634,8 @@ function renderSopEdit(id) {
       };
       const phase = block.querySelector(".se-phase").value.trim();
       if (phase) step.phase = phase;
+      const afterStep = readStepAfter(block);
+      if (afterStep !== undefined) step.afterStep = afterStep;
       const tags = [];
       if (block.querySelector(".se-tag-approval").checked) tags.push("approval");
       if (block.querySelector(".se-tag-confidential").checked) tags.push("confidential");
@@ -2776,6 +2812,7 @@ function renderSopNew() {
     const checklistWrap = block.querySelector(".se-checklist-wrap");
     const decisionWrap = block.querySelector(".se-decision-wrap");
     bindDecisionOptionsEditor(decisionWrap);
+    bindStepAfterControl(block);
     typeSel.addEventListener("change", () => {
       checklistWrap.style.display = typeSel.value === "checklist" ? "block" : "none";
       decisionWrap.style.display = typeSel.value === "decision" ? "block" : "none";
@@ -2833,6 +2870,8 @@ function renderSopNew() {
       };
       const phase = block.querySelector(".se-phase").value.trim();
       if (phase) step.phase = phase;
+      const afterStep = readStepAfter(block);
+      if (afterStep !== undefined) step.afterStep = afterStep;
       const tags = [];
       if (block.querySelector(".se-tag-approval").checked) tags.push("approval");
       if (block.querySelector(".se-tag-confidential").checked) tags.push("confidential");
@@ -3054,10 +3093,16 @@ function renderRun(id) {
 
   function nextIndexFor(i) {
     const step = steps[i];
-    if (step && step.type === "decision" && decisionChoice[i] !== undefined) {
+    if (!step) return i + 1;
+    if (step.type === "decision" && decisionChoice[i] !== undefined) {
       const opt = step.options[decisionChoice[i]];
       if (opt && opt.goToStep) return Math.max(0, Math.min(steps.length, opt.goToStep - 1));
     }
+    // A step's own "after this step" setting -- lets a step reached by
+    // only one branch (like a decision's target step) finish or jump on
+    // its own instead of falling through into the next branch's steps.
+    if (step.afterStep === "finish") return steps.length;
+    if (typeof step.afterStep === "number") return Math.max(0, Math.min(steps.length, step.afterStep - 1));
     return i + 1;
   }
   function isStepComplete(i) {
