@@ -618,6 +618,12 @@ function escapeHtml(str) {
 function escapeAttr(str) {
   return escapeHtml(str || "").replace(/"/g, "&quot;");
 }
+// Step bodies are plain text from a textarea -- line breaks the author
+// typed need to survive into the rendered <p>, which HTML otherwise
+// collapses.
+function bodyHtml(text) {
+  return escapeHtml(text || "").replace(/\n/g, "<br>");
+}
 function initialsFrom(name) {
   return (name || "").split(/\s+/).filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 3) || "NA";
 }
@@ -2114,7 +2120,7 @@ function renderSopDetail(id) {
     const tags = (step.tags || []).map((t) => tagChip[t] || "").join("");
     return `${phaseHtml}<div class="step-row ${phaseHtml ? "phase-first" : ""}">
       <div class="step-num"><span>${i + 1}</span></div>
-      <div><h3>${step.title}${typeLabel[step.type] ? `<span class="step-type">${typeLabel[step.type]}</span>` : ""}${tags}</h3><p>${step.body || ""}</p>${extra}</div>
+      <div><h3>${step.title}${typeLabel[step.type] ? `<span class="step-type">${typeLabel[step.type]}</span>` : ""}${tags}</h3><p>${bodyHtml(step.body)}</p>${extra}</div>
     </div>`;
   }).join("");
 
@@ -3080,7 +3086,7 @@ function renderRun(id) {
     if (step.phase) inner += `<div class="phase-eyebrow">${step.phase}</div>`;
     inner += `<div class="step-card"><h2>${step.title}</h2>`;
     if (step.tags && step.tags.length) inner += `<div class="step-tags">${step.tags.map((t) => tagChip[t] || "").join("")}</div>`;
-    if (step.body) inner += `<p class="body-text">${step.body}</p>`;
+    if (step.body) inner += `<p class="body-text">${bodyHtml(step.body)}</p>`;
     if (step.type === "checklist" && step.items) inner += step.items.map((it, idx) => `<div class="check-item ${checklistState[stepIndex][idx] ? "checked" : ""}" data-idx="${idx}"><span class="box">&#10003;</span><span>${it}</span></div>`).join("");
     if (step.type === "decision" && step.options) inner += step.options.map((o, idx) => `<div class="option-item ${decisionChoice[stepIndex] === idx ? "selected" : ""}" data-idx="${idx}"><span class="label">${o.label}</span><span class="detail">${o.detail}</span></div>`).join("");
     inner += `</div><button class="flag-link ${flagged.has(stepIndex) ? "flagged" : ""}" id="flag-btn">${flagged.has(stepIndex) ? "⚑ Flagged as unclear" : "Flag this step as unclear"}</button>`;
