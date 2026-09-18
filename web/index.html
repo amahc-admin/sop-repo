@@ -1974,9 +1974,6 @@ function renderQueue() {
 // never be embedded on another site, only linked to, so that's a card,
 // not an iframe. Loom's /share/ links get rewritten to their dedicated
 // /embed/ URL, which Loom explicitly supports framing for.
-function isMobileUA() {
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-}
 function documentEmbedHtml(url, name) {
   let hostname = "";
   try { hostname = new URL(url).hostname; } catch (e) {}
@@ -2001,20 +1998,15 @@ function documentEmbedHtml(url, name) {
     // A plain <iframe src="the-pdf-url"> only renders inline on browsers
     // with a built-in PDF plugin wired up for iframes -- desktop Chrome
     // has one, but Chrome/Safari/etc on phones don't, so mobile viewers
-    // just saw a broken "can't preview, tap Open" placeholder. There's
-    // no reliable way to feature-detect that support, and a JS-based
-    // viewer is its own maintenance burden and compatibility risk across
-    // the range of real mobile browser versions -- so on mobile, skip
-    // the embed and go straight to what already works well there: the
-    // OS's own PDF viewer, opened via a plain link.
-    if (isMobileUA()) {
-      return {
-        embedHtml: `<div class="document-open-card"><span>&#128196; ${escapeHtml(label)}</span><a class="btn btn-primary" href="${url}" target="_blank" rel="noopener">Open PDF</a></div>`,
-        showOpenLink: false,
-      };
-    }
+    // just saw a broken "can't preview, tap Open" placeholder. Instead of
+    // relying on the browser's own (inconsistent) PDF handling, point
+    // the iframe at our own vendored copy of PDF.js (web/vendor/pdfjs --
+    // a pinned stable release, not Mozilla's live/dev build, which broke
+    // in testing on a recent Chromium) so the exact same JS-rendered
+    // viewer runs identically on every device.
+    const viewerUrl = "vendor/pdfjs/web/viewer.html?file=" + encodeURIComponent(url);
     return {
-      embedHtml: `<iframe src="${url}" class="document-embed" title="${escapeAttr(label)}"></iframe>`,
+      embedHtml: `<iframe src="${viewerUrl}" class="document-embed" title="${escapeAttr(label)}"></iframe>`,
       showOpenLink: true,
     };
   }
