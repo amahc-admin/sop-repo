@@ -423,6 +423,14 @@
   .kv-row .kv-b { flex: 1; font: 400 13.5px Barlow, sans-serif; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-primary); }
   .kv-row .kv-remove { padding: 6px 12px; line-height: 1; }
 
+  /* Decision-step options: label, detail, and an optional "go to step #" */
+  .do-editor { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+  .do-row { display: flex; gap: 8px; align-items: center; }
+  .do-row .do-label { flex: 2; font: 400 13.5px Barlow, sans-serif; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-primary); }
+  .do-row .do-detail { flex: 2; font: 400 13.5px Barlow, sans-serif; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-primary); }
+  .do-row .do-goto { flex: 1; min-width: 0; font: 400 13.5px Barlow, sans-serif; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-primary); }
+  .do-row .do-remove { padding: 6px 12px; line-height: 1; }
+
   /* Progressive disclosure for the less-common Add/Edit SOP fields */
   .edit-details { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 16px 16px; margin-bottom: 20px; }
   .edit-details summary { cursor: pointer; padding: 12px 0; font: 700 13px Barlow, sans-serif; color: var(--text-secondary); list-style: none; }
@@ -2367,10 +2375,56 @@ function toolsRows(toolsSystems) { return (toolsSystems || []).map((t) => ({ a: 
 function escalationRows(escalation) { return (escalation || []).map((e) => ({ a: e.when || "", b: e.action || "" })); }
 function formsKvRows(forms) { return (forms || []).map((f) => (typeof f === "string" ? { a: f, b: "" } : { a: f.name || "", b: f.href || "" })); }
 
+// One row per decision option: label, detail, and an optional "Go to
+// step #" -- Run mode jumps straight there when that option is picked
+// instead of just falling through to the next step in the list. Blank
+// means "no branch, just continue" (matches every decision step made
+// before this existed). References a step by its plain position number
+// (the same "Step 1/2/3" numbering shown on the SOP page) rather than a
+// stable id, since steps don't have one -- reordering steps afterward
+// can silently point a jump at the wrong step, same tradeoff as
+// reordering numbered items in most simple flowchart tools.
+function decisionOptionRowHtml(o) {
+  o = o || {};
+  return `<div class="do-row">
+    <input class="do-label" placeholder="Option label (e.g. Dining / American table)" value="${escapeAttr(o.label || "")}">
+    <input class="do-detail" placeholder="Detail (optional)" value="${escapeAttr(o.detail || "")}">
+    <input class="do-goto" type="number" min="1" placeholder="Go to step #" value="${o.goToStep || ""}" title="Which step to jump to if this option is picked while running the SOP. Leave blank to just continue to the next step.">
+    <button type="button" class="btn btn-secondary do-remove" title="Remove this option">&times;</button>
+  </div>`;
+}
+function decisionOptionsEditorHtml(options) {
+  const rows = (options && options.length ? options : [{}]).map(decisionOptionRowHtml).join("");
+  return `<div class="do-editor">${rows}</div><button type="button" class="btn btn-secondary do-add-btn">+ Add option</button>`;
+}
+function bindDecisionOptionRow(row) {
+  row.querySelector(".do-remove").addEventListener("click", () => row.remove());
+}
+function bindDecisionOptionsEditor(wrap) {
+  wrap.querySelectorAll(".do-row").forEach(bindDecisionOptionRow);
+  const addBtn = wrap.querySelector(".do-add-btn");
+  addBtn.addEventListener("click", () => {
+    const holder = document.createElement("div");
+    holder.innerHTML = decisionOptionRowHtml();
+    const row = holder.firstElementChild;
+    wrap.querySelector(".do-editor").appendChild(row);
+    bindDecisionOptionRow(row);
+    row.querySelector(".do-label").focus();
+  });
+}
+function readDecisionOptions(wrap) {
+  return Array.from(wrap.querySelectorAll(".do-row")).map((row) => {
+    const label = row.querySelector(".do-label").value.trim();
+    const detail = row.querySelector(".do-detail").value.trim();
+    const gotoVal = row.querySelector(".do-goto").value.trim();
+    const opt = { label, detail };
+    if (gotoVal) opt.goToStep = parseInt(gotoVal, 10);
+    return opt;
+  }).filter((o) => o.label);
+}
 function stepEditBlockHtml(step, idx) {
   const st = step || { type: "info" };
   const itemsVal = (st.items || []).join("\n");
-  const optionsVal = (st.options || []).map((o) => `${o.label} | ${o.detail || ""}`).join("\n");
   const tags = st.tags || [];
   return `<div class="step-edit-block" data-idx="${idx}">
     <div class="step-edit-row">
@@ -2390,7 +2444,7 @@ function stepEditBlockHtml(step, idx) {
       <textarea class="se-items" placeholder="One checklist item per line" rows="3">${escapeHtml(itemsVal)}</textarea>
     </div>
     <div class="se-decision-wrap" style="display:${st.type === "decision" ? "block" : "none"}">
-      <textarea class="se-options" placeholder="Label | Detail (one option per line)" rows="3">${escapeHtml(optionsVal)}</textarea>
+      ${decisionOptionsEditorHtml(st.options)}
     </div>
     <div class="se-tags">
       <label><input type="checkbox" class="se-tag-approval" ${tags.includes("approval") ? "checked" : ""}> Approval required</label>
@@ -2482,6 +2536,7 @@ function renderSopEdit(id) {
     const typeSel = block.querySelector(".se-type");
     const checklistWrap = block.querySelector(".se-checklist-wrap");
     const decisionWrap = block.querySelector(".se-decision-wrap");
+    bindDecisionOptionsEditor(decisionWrap);
     typeSel.addEventListener("change", () => {
       checklistWrap.style.display = typeSel.value === "checklist" ? "block" : "none";
       decisionWrap.style.display = typeSel.value === "decision" ? "block" : "none";
@@ -2529,10 +2584,6 @@ function renderSopEdit(id) {
     const statusEl = document.getElementById("edit-status");
 
     const linesOf = (el) => el.value.split("\n").map((s) => s.trim()).filter(Boolean);
-    const pairsOf = (el, keyA, keyB) => linesOf(el).map((line) => {
-      const [a, b] = line.split("|").map((s) => (s || "").trim());
-      return { [keyA]: a, [keyB]: b || "" };
-    });
 
     const steps = Array.from(document.querySelectorAll(".step-edit-block")).map((block) => {
       const type = block.querySelector(".se-type").value;
@@ -2548,7 +2599,7 @@ function renderSopEdit(id) {
       if (block.querySelector(".se-tag-confidential").checked) tags.push("confidential");
       if (tags.length) step.tags = tags;
       if (type === "checklist") step.items = linesOf(block.querySelector(".se-items"));
-      else if (type === "decision") step.options = pairsOf(block.querySelector(".se-options"), "label", "detail");
+      else if (type === "decision") step.options = readDecisionOptions(block.querySelector(".se-decision-wrap"));
       return step;
     }).filter((s) => s.title);
 
@@ -2718,6 +2769,7 @@ function renderSopNew() {
     const typeSel = block.querySelector(".se-type");
     const checklistWrap = block.querySelector(".se-checklist-wrap");
     const decisionWrap = block.querySelector(".se-decision-wrap");
+    bindDecisionOptionsEditor(decisionWrap);
     typeSel.addEventListener("change", () => {
       checklistWrap.style.display = typeSel.value === "checklist" ? "block" : "none";
       decisionWrap.style.display = typeSel.value === "decision" ? "block" : "none";
@@ -2765,10 +2817,6 @@ function renderSopNew() {
     const statusEl = document.getElementById("edit-status");
 
     const linesOf = (el) => el.value.split("\n").map((s) => s.trim()).filter(Boolean);
-    const pairsOf = (el, keyA, keyB) => linesOf(el).map((line) => {
-      const [a, b] = line.split("|").map((s) => (s || "").trim());
-      return { [keyA]: a, [keyB]: b || "" };
-    });
 
     const steps = Array.from(document.querySelectorAll(".step-edit-block")).map((block) => {
       const type = block.querySelector(".se-type").value;
@@ -2784,7 +2832,7 @@ function renderSopNew() {
       if (block.querySelector(".se-tag-confidential").checked) tags.push("confidential");
       if (tags.length) step.tags = tags;
       if (type === "checklist") step.items = linesOf(block.querySelector(".se-items"));
-      else if (type === "decision") step.options = pairsOf(block.querySelector(".se-options"), "label", "detail");
+      else if (type === "decision") step.options = readDecisionOptions(block.querySelector(".se-decision-wrap"));
       return step;
     }).filter((s) => s.title);
 
@@ -2996,7 +3044,16 @@ function renderRun(id) {
   const checklistState = steps.map((s) => (s.items ? s.items.map(() => false) : []));
   const decisionChoice = {};
   const flagged = new Set();
+  const historyStack = [];
 
+  function nextIndexFor(i) {
+    const step = steps[i];
+    if (step && step.type === "decision" && decisionChoice[i] !== undefined) {
+      const opt = step.options[decisionChoice[i]];
+      if (opt && opt.goToStep) return Math.max(0, Math.min(steps.length, opt.goToStep - 1));
+    }
+    return i + 1;
+  }
   function isStepComplete(i) {
     const step = steps[i];
     if (!step) return true;
@@ -3048,10 +3105,10 @@ function renderRun(id) {
     let footer = document.getElementById("run-footer");
     if (!footer) { footer = document.createElement("div"); footer.className = "run-footer"; footer.id = "run-footer"; document.getElementById("run-shell").insertBefore(footer, document.getElementById("pause-overlay")); }
     const complete = isStepComplete(stepIndex);
-    const isLast = stepIndex === steps.length - 1;
-    footer.innerHTML = `<button class="btn btn-secondary" id="back-btn" ${stepIndex === 0 ? "disabled" : ""}>Back</button><button class="btn btn-primary" id="next-btn" ${complete ? "" : "disabled"}>${isLast ? "Finish & sign off" : "Next step"}</button>`;
-    document.getElementById("back-btn").addEventListener("click", () => { if (stepIndex > 0) { stepIndex--; renderStep(); } });
-    document.getElementById("next-btn").addEventListener("click", () => { if (!isStepComplete(stepIndex)) return; stepIndex++; renderStep(); });
+    const isLast = nextIndexFor(stepIndex) >= steps.length;
+    footer.innerHTML = `<button class="btn btn-secondary" id="back-btn" ${historyStack.length === 0 ? "disabled" : ""}>Back</button><button class="btn btn-primary" id="next-btn" ${complete ? "" : "disabled"}>${isLast ? "Finish & sign off" : "Next step"}</button>`;
+    document.getElementById("back-btn").addEventListener("click", () => { if (historyStack.length) { stepIndex = historyStack.pop(); renderStep(); } });
+    document.getElementById("next-btn").addEventListener("click", () => { if (!isStepComplete(stepIndex)) return; historyStack.push(stepIndex); stepIndex = nextIndexFor(stepIndex); renderStep(); });
   }
   function renderFooterComplete() {
     const footer = document.getElementById("run-footer");
