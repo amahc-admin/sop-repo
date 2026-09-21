@@ -1974,6 +1974,22 @@ function renderQueue() {
 // never be embedded on another site, only linked to, so that's a card,
 // not an iframe. Loom's /share/ links get rewritten to their dedicated
 // /embed/ URL, which Loom explicitly supports framing for.
+// Pulls the video id out of any of YouTube's URL shapes (watch, youtu.be
+// short links, already-an-embed link, or a Shorts link) so it can be
+// pointed at youtube.com/embed/ -- YouTube's own supported embed path,
+// same idea as Loom's /embed/ below.
+function youtubeEmbedId(url) {
+  let u;
+  try { u = new URL(url); } catch (e) { return null; }
+  const host = u.hostname.replace(/^(www\.|m\.)/, "");
+  if (host === "youtu.be") return u.pathname.slice(1).split("/")[0] || null;
+  if (host === "youtube.com") {
+    if (u.pathname === "/watch") return u.searchParams.get("v");
+    const m = /^\/(embed|shorts)\/([^/?]+)/.exec(u.pathname);
+    if (m) return m[2];
+  }
+  return null;
+}
 function documentEmbedHtml(url, name) {
   let hostname = "";
   try { hostname = new URL(url).hostname; } catch (e) {}
@@ -1990,6 +2006,14 @@ function documentEmbedHtml(url, name) {
     const embedUrl = `https://www.loom.com/embed/${loomMatch[1]}`;
     return {
       embedHtml: `<iframe src="${embedUrl}" class="document-embed" allow="autoplay; fullscreen" allowfullscreen title="${escapeAttr(label)}"></iframe>`,
+      showOpenLink: true,
+    };
+  }
+  const ytId = youtubeEmbedId(url);
+  if (ytId) {
+    const embedUrl = `https://www.youtube.com/embed/${ytId}`;
+    return {
+      embedHtml: `<iframe src="${embedUrl}" class="document-embed" allow="autoplay; encrypted-media; fullscreen" allowfullscreen title="${escapeAttr(label)}"></iframe>`,
       showOpenLink: true,
     };
   }
@@ -2151,16 +2175,18 @@ function renderSopDetail(id) {
       const href = typeof f === "string" ? null : f.href;
       const flag = href ? "" : `<span class="form-flag" title="Not yet connected to an actual document">Not linked</span>`;
       const loomMatch = href ? /loom\.com\/share\/([a-zA-Z0-9]+)/.exec(href) : null;
+      const ytId = href ? youtubeEmbedId(href) : null;
       const linkLine = href
-        ? `<li><a href="${href}" target="_blank" rel="noopener">${loomMatch ? "&#127909;" : "&#128196;"} ${escapeHtml(name)}</a></li>`
+        ? `<li><a href="${href}" target="_blank" rel="noopener">${loomMatch || ytId ? "&#127909;" : "&#128196;"} ${escapeHtml(name)}</a></li>`
         : `<li><a>&#128196; ${escapeHtml(name)}${flag}</a></li>`;
-      // Loom explicitly supports third-party embedding via its /embed/
-      // URL -- other links (Claude artifacts included) just stay a
-      // plain link, since most link destinations either can't be framed
-      // or aren't meant to be (a page you're meant to navigate to, not
-      // watch inline).
-      const embedLine = loomMatch
-        ? `<li class="forms-embed"><iframe src="https://www.loom.com/embed/${loomMatch[1]}" class="document-embed-inline" allow="autoplay; fullscreen" allowfullscreen title="${escapeAttr(name)}"></iframe></li>`
+      // Loom and YouTube both explicitly support third-party embedding
+      // via a dedicated /embed/ URL -- other links (Claude artifacts
+      // included) just stay a plain link, since most link destinations
+      // either can't be framed or aren't meant to be (a page you're
+      // meant to navigate to, not watch inline).
+      const embedSrc = loomMatch ? `https://www.loom.com/embed/${loomMatch[1]}` : ytId ? `https://www.youtube.com/embed/${ytId}` : null;
+      const embedLine = embedSrc
+        ? `<li class="forms-embed"><iframe src="${embedSrc}" class="document-embed-inline" allow="autoplay; encrypted-media; fullscreen" allowfullscreen title="${escapeAttr(name)}"></iframe></li>`
         : "";
       return linkLine + embedLine;
     }).join("");
