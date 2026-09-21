@@ -1595,7 +1595,12 @@ function wireEditProposalsSection(refresh) {
 }
 
 /* ==================== PENDING DIRECTORY EDITS (Member proposals) ========= */
-const DIRECTORY_FIELD_LABELS = { name: "Name", role: "Role", department: "Department", email: "Email", phone: "Phone", notes: "Notes", reports_to: "Reports to", photo_url: "Photo" };
+const DIRECTORY_FIELD_LABELS = {
+  name: "Name", role: "Role", department: "Department",
+  email: "Company email", phone: "Company phone",
+  personal_email: "Personal email", personal_phone: "Personal phone",
+  notes: "Notes", reports_to: "Reports to", photo_url: "Photo",
+};
 function personName(id) {
   const p = DIRECTORY.find((x) => x.id === id);
   return p ? p.name : null;
@@ -1604,7 +1609,7 @@ function diffDirectoryProposalFields(entry, fields) {
   const out = [];
   Object.keys(fields || {}).forEach((key) => {
     if (!(key in DIRECTORY_FIELD_LABELS)) return;
-    const oldVal = entry ? (key === "reports_to" ? entry.reportsTo : key === "photo_url" ? entry.photoUrl : entry[key]) : undefined;
+    const oldVal = entry ? (key === "reports_to" ? entry.reportsTo : key === "photo_url" ? entry.photoUrl : key === "personal_email" ? entry.personalEmail : key === "personal_phone" ? entry.personalPhone : entry[key]) : undefined;
     const newVal = fields[key];
     if ((oldVal || "") === (newVal || "")) return;
     const display = (v) => {
@@ -1712,6 +1717,8 @@ function wireDirectoryProposalsSection(refresh) {
           if ("department" in f) entry.department = f.department;
           if ("email" in f) entry.email = f.email;
           if ("phone" in f) entry.phone = f.phone;
+          if ("personal_email" in f) entry.personalEmail = f.personal_email;
+          if ("personal_phone" in f) entry.personalPhone = f.personal_phone;
           if ("notes" in f) entry.notes = f.notes;
           if ("reports_to" in f) entry.reportsTo = f.reports_to || null;
           if ("photo_url" in f) entry.photoUrl = f.photo_url || "";
@@ -3336,6 +3343,18 @@ function renderOrgChildren(kids, childrenOf) {
   return `<ul class="org-branch">${groups}</ul>`;
 }
 
+// Shared by the org-chart hover card and the directory search list --
+// company contact info reads as-is; personal contact info (only ever
+// entered if someone chose to add it) is marked so it's never mistaken
+// for the work line.
+function contactBitsHtml(p) {
+  const bits = [];
+  if (p.email) bits.push(`<a href="mailto:${escapeAttr(p.email)}">${escapeHtml(p.email)}</a>`);
+  if (p.phone) bits.push(`<a href="tel:${escapeAttr(p.phone)}">${escapeHtml(p.phone)}</a>`);
+  if (p.personalEmail) bits.push(`<a href="mailto:${escapeAttr(p.personalEmail)}">${escapeHtml(p.personalEmail)}</a> <span class="muted">(personal)</span>`);
+  if (p.personalPhone) bits.push(`<a href="tel:${escapeAttr(p.personalPhone)}">${escapeHtml(p.personalPhone)}</a> <span class="muted">(personal)</span>`);
+  return bits.join(" &middot; ");
+}
 // A tree node shows just a circular photo (or initials if none) --
 // hovering it (or tapping it, for touch screens with no hover) reveals
 // the full details in a popover. The popover is a descendant of the
@@ -3344,10 +3363,7 @@ function renderOrgChildren(kids, childrenOf) {
 function renderOrgNode(p, childrenOf) {
   const dept = getDepartment(p.department);
   const kids = childrenOf.get(p.id) || [];
-  const contactBits = [
-    p.email ? `<a href="mailto:${escapeAttr(p.email)}">${escapeHtml(p.email)}</a>` : "",
-    p.phone ? `<a href="tel:${escapeAttr(p.phone)}">${escapeHtml(p.phone)}</a>` : "",
-  ].filter(Boolean).join(" &middot; ");
+  const contactBits = contactBitsHtml(p);
   const avatarInner = p.photoUrl ? `<img src="${escapeAttr(p.photoUrl)}" alt="${escapeAttr(p.name)}">` : escapeHtml(initialsFrom(p.name));
   return `<li>
     <div class="person-node" data-person-node="${p.id}">
@@ -3375,17 +3391,14 @@ function renderDirectory() {
     const entries = DIRECTORY
       .filter((p) => {
         const dept = getDepartment(p.department);
-        return [p.name, p.role, p.email, dept ? dept.name : ""].join(" ").toLowerCase().includes(q);
+        return [p.name, p.role, p.email, p.personalEmail, dept ? dept.name : ""].join(" ").toLowerCase().includes(q);
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
     bodyHtml = entries.length
       ? entries.map((p) => {
           const dept = getDepartment(p.department);
-          const contactBits = [
-            p.email ? `<a href="mailto:${escapeAttr(p.email)}">${escapeHtml(p.email)}</a>` : "",
-            p.phone ? `<a href="tel:${escapeAttr(p.phone)}">${escapeHtml(p.phone)}</a>` : "",
-          ].filter(Boolean).join(" &middot; ");
+          const contactBits = contactBitsHtml(p);
           const avatarInner = p.photoUrl ? `<img src="${escapeAttr(p.photoUrl)}" alt="${escapeAttr(p.name)}">` : escapeHtml(initialsFrom(p.name));
           return `<div class="review-item">
             <div class="row" style="gap:10px;align-items:center">
@@ -3562,8 +3575,10 @@ function renderDirectoryNew() {
       </select>
     </div>
     ${photoFieldHtml("")}
-    <div class="edit-field"><label>Email <span class="muted small">(optional)</span></label><input id="ef-person-email" class="ef-input" placeholder="name@amanandhiscave.com"></div>
-    <div class="edit-field"><label>Phone <span class="muted small">(optional)</span></label><input id="ef-person-phone" class="ef-input" placeholder="e.g. (555) 555-0100"></div>
+    <div class="edit-field"><label>Company email <span class="muted small">(optional)</span></label><input id="ef-person-email" class="ef-input" placeholder="name@amanandhiscave.com"></div>
+    <div class="edit-field"><label>Company phone <span class="muted small">(optional)</span></label><input id="ef-person-phone" class="ef-input" placeholder="e.g. (555) 555-0100"></div>
+    <div class="edit-field"><label>Personal email <span class="muted small">(optional)</span></label><input id="ef-person-personal-email" class="ef-input" placeholder="name@example.com"></div>
+    <div class="edit-field"><label>Personal phone <span class="muted small">(optional)</span></label><input id="ef-person-personal-phone" class="ef-input" placeholder="e.g. (555) 555-0100"></div>
     <div class="edit-field"><label>Notes <span class="muted small">(optional)</span></label><input id="ef-person-notes" class="ef-input" placeholder="e.g. Out on Fridays"></div>
 
     <div class="edit-actions">
@@ -3589,6 +3604,8 @@ function renderDirectoryNew() {
     const reportsTo = document.getElementById("ef-person-reports-to").value;
     const email = document.getElementById("ef-person-email").value.trim();
     const phone = document.getElementById("ef-person-phone").value.trim();
+    const personalEmail = document.getElementById("ef-person-personal-email").value.trim();
+    const personalPhone = document.getElementById("ef-person-personal-phone").value.trim();
     const notes = document.getElementById("ef-person-notes").value.trim();
     const photoFile = document.getElementById("ef-person-photo").files[0];
 
@@ -3601,8 +3618,8 @@ function renderDirectoryNew() {
         photoUrl = await API.uploadDirectoryPhoto(photoFile);
         saveBtn.textContent = "Saving...";
       }
-      const newId = await API.addDirectoryEntry(CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, { name, role, department, email, phone, notes, reports_to: reportsTo, photo_url: photoUrl });
-      DIRECTORY.push({ id: newId, name, role, department, email, phone, notes, reportsTo: reportsTo || null, photoUrl, status: "draft" });
+      const newId = await API.addDirectoryEntry(CURRENT_VIEWER.id, CURRENT_VIEWER.passcode, CURRENT_VIEWER.lastName, { name, role, department, email, phone, personal_email: personalEmail, personal_phone: personalPhone, notes, reports_to: reportsTo, photo_url: photoUrl });
+      DIRECTORY.push({ id: newId, name, role, department, email, phone, personalEmail, personalPhone, notes, reportsTo: reportsTo || null, photoUrl, status: "draft" });
       go("/directory");
     } catch (err) {
       saveBtn.disabled = false;
@@ -3651,8 +3668,10 @@ function renderDirectoryEdit(id) {
       </select>
     </div>
     ${photoFieldHtml(p.photoUrl)}
-    <div class="edit-field"><label>Email <span class="muted small">(optional)</span></label><input id="ef-person-email" class="ef-input" value="${escapeAttr(p.email)}"></div>
-    <div class="edit-field"><label>Phone <span class="muted small">(optional)</span></label><input id="ef-person-phone" class="ef-input" value="${escapeAttr(p.phone)}"></div>
+    <div class="edit-field"><label>Company email <span class="muted small">(optional)</span></label><input id="ef-person-email" class="ef-input" value="${escapeAttr(p.email)}"></div>
+    <div class="edit-field"><label>Company phone <span class="muted small">(optional)</span></label><input id="ef-person-phone" class="ef-input" value="${escapeAttr(p.phone)}"></div>
+    <div class="edit-field"><label>Personal email <span class="muted small">(optional)</span></label><input id="ef-person-personal-email" class="ef-input" value="${escapeAttr(p.personalEmail)}"></div>
+    <div class="edit-field"><label>Personal phone <span class="muted small">(optional)</span></label><input id="ef-person-personal-phone" class="ef-input" value="${escapeAttr(p.personalPhone)}"></div>
     <div class="edit-field"><label>Notes <span class="muted small">(optional)</span></label><input id="ef-person-notes" class="ef-input" value="${escapeAttr(p.notes)}"></div>
 
     <div class="edit-actions">
@@ -3680,6 +3699,8 @@ function renderDirectoryEdit(id) {
       department: document.getElementById("ef-person-department").value,
       email: document.getElementById("ef-person-email").value.trim(),
       phone: document.getElementById("ef-person-phone").value.trim(),
+      personal_email: document.getElementById("ef-person-personal-email").value.trim(),
+      personal_phone: document.getElementById("ef-person-personal-phone").value.trim(),
       notes: document.getElementById("ef-person-notes").value.trim(),
       reports_to: reportsTo,
       photo_url: p.photoUrl || "",
@@ -3705,6 +3726,7 @@ function renderDirectoryEdit(id) {
         Object.assign(p, {
           name: fields.name, role: fields.role, department: fields.department,
           email: fields.email, phone: fields.phone, notes: fields.notes,
+          personalEmail: fields.personal_email, personalPhone: fields.personal_phone,
           reportsTo: fields.reports_to || null,
           photoUrl: fields.photo_url || "",
         });
@@ -3786,6 +3808,7 @@ function mapDirectoryEntry(row) {
   return {
     id: row.id, name: row.name, role: row.role, department: row.department,
     email: row.email || "", phone: row.phone || "", notes: row.notes || "",
+    personalEmail: row.personal_email || "", personalPhone: row.personal_phone || "",
     reportsTo: row.reports_to || null,
     photoUrl: row.photo_url || "",
     status: row.status,
