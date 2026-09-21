@@ -1423,13 +1423,13 @@ function renderSuggestionsPage() {
 /* ============================== PENDING SOP EDITS (Member proposals) ====== */
 let EDIT_PROPOSALS = []; // populated from sop_edit_proposals at boot (see boot())
 const EDIT_FIELD_LABELS = {
-  title: "Title", subtitle: "Subtitle", never_do_this: "Never do this",
+  title: "Title", subtitle: "Subtitle", department: "Department", never_do_this: "Never do this",
   before_you_start: "Before you start", tools_systems: "Tools & systems", steps: "Steps",
   success_criteria: "Success criteria", escalation: "Escalation path", forms: "Additional links",
   source_document_url: "Document", source_document_name: "Document name",
 };
 const EDIT_FIELD_CAMEL = {
-  title: "title", subtitle: "subtitle", never_do_this: "neverDoThis",
+  title: "title", subtitle: "subtitle", department: "department", never_do_this: "neverDoThis",
   before_you_start: "beforeYouStart", tools_systems: "toolsSystems", steps: "steps",
   success_criteria: "successCriteria", escalation: "escalation", forms: "forms",
   source_document_url: "sourceDocumentUrl", source_document_name: "sourceDocumentName",
@@ -1451,9 +1451,13 @@ function diffProposalFields(sop, fields) {
   Object.keys(fields || {}).forEach((key) => {
     const camel = EDIT_FIELD_CAMEL[key];
     if (!camel) return;
-    const oldVal = sop ? sop[camel] : undefined;
-    const newVal = fields[key];
+    let oldVal = sop ? sop[camel] : undefined;
+    let newVal = fields[key];
     if (JSON.stringify(oldVal == null ? null : oldVal) === JSON.stringify(newVal == null ? null : newVal)) return;
+    if (key === "department") {
+      oldVal = (getDepartment(oldVal) || {}).name || oldVal;
+      newVal = (getDepartment(newVal) || {}).name || newVal;
+    }
     out.push({ key, label: EDIT_FIELD_LABELS[key] || key, oldVal, newVal });
   });
   return out;
@@ -2352,6 +2356,7 @@ function fieldsFromSop(sop) {
   return {
     title: sop.title || "",
     subtitle: sop.subtitle || "",
+    department: sop.department || "",
     neverDoThis: sop.neverDoThis || "",
     beforeYouStart: sop.beforeYouStart || [],
     toolsSystems: sop.toolsSystems || [],
@@ -2569,6 +2574,11 @@ function renderSopEdit(id) {
     ${memberProposing ? `<p class="muted small" style="margin-bottom:14px">Your changes will be submitted as a proposal &mdash; an Admin needs to approve them before they go live.</p>` : ""}
 
     <div class="edit-field"><label>Title</label><input id="ef-title" class="ef-input" value="${escapeAttr(f.title)}"></div>
+    <div class="edit-field"><label>Department</label>
+      <select id="ef-department" class="ef-input">
+        ${DEPARTMENTS.map((d) => `<option value="${d.id}" ${d.id === f.department ? "selected" : ""}>${d.name}</option>`).join("")}
+      </select>
+    </div>
     ${!sop.sourceDocumentUrl ? `<div class="edit-field"><label>Subtitle</label><input id="ef-subtitle" class="ef-input" value="${escapeAttr(f.subtitle)}"></div>` : ""}
     ${sop.sourceDocumentUrl ? `
     <div class="edit-field">
@@ -2733,6 +2743,7 @@ function renderSopEdit(id) {
 
     const fields = {
       title,
+      department: document.getElementById("ef-department").value,
       subtitle: sop.sourceDocumentUrl ? (docDescriptionVal || "Hosted as an uploaded document.") : document.getElementById("ef-subtitle").value.trim(),
       beforeYouStart: linesOf(document.getElementById("ef-before")),
       toolsSystems: readKvEditor("tools-editor", "name", "note"),
@@ -2753,6 +2764,7 @@ function renderSopEdit(id) {
     const snakeFields = {
       title: fields.title,
       subtitle: fields.subtitle,
+      department: fields.department,
       before_you_start: fields.beforeYouStart,
       tools_systems: fields.toolsSystems,
       steps: fields.steps,
