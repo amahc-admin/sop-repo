@@ -1985,7 +1985,7 @@ function youtubeEmbedId(url) {
   if (host === "youtu.be") return u.pathname.slice(1).split("/")[0] || null;
   if (host === "youtube.com") {
     if (u.pathname === "/watch") return u.searchParams.get("v");
-    const m = /^\/(embed|shorts)\/([^/?]+)/.exec(u.pathname);
+    const m = /^\/(embed|shorts|live)\/([^/?]+)/.exec(u.pathname);
     if (m) return m[2];
   }
   return null;
@@ -2404,6 +2404,17 @@ function readKvEditor(id, keyA, keyB) {
     .map((row) => ({ [keyA]: row.querySelector(".kv-a").value.trim(), [keyB]: row.querySelector(".kv-b").value.trim() }))
     .filter((r) => r[keyA] || r[keyB]);
 }
+// A browser happily accepts a bare "youtube.com/..." or "loom.com/..."
+// typed into a plain text field, but stored as-is it's broken: as an
+// <a href> it resolves as a path on this site instead of out to the
+// real destination, and new URL() elsewhere (embed detection, hostname
+// checks) throws on a schemeless string. Assume https, same as a
+// browser's own address bar does with a bare domain.
+function normalizeUrl(value) {
+  const v = (value || "").trim();
+  if (!v || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(v)) return v;
+  return "https://" + v;
+}
 // Forms are special: a row with no URL stays a plain string (matches
 // the "not linked yet" display on the SOP page), one with a URL
 // becomes {name, href}.
@@ -2411,7 +2422,7 @@ function readFormsKvEditor(id) {
   return Array.from(document.querySelectorAll("#" + id + " .kv-row"))
     .map((row) => {
       const name = row.querySelector(".kv-a").value.trim();
-      const href = row.querySelector(".kv-b").value.trim();
+      const href = normalizeUrl(row.querySelector(".kv-b").value.trim());
       if (!name && !href) return null;
       return href ? { name, href } : name;
     })
@@ -2701,7 +2712,7 @@ function renderSopEdit(id) {
         return;
       }
     } else if (sop.sourceDocumentUrl && docLinkVal) {
-      docUrl = docLinkVal;
+      docUrl = normalizeUrl(docLinkVal);
       docName = null;
     } else if (sop.sourceDocumentUrl) {
       docUrl = sop.sourceDocumentUrl;
@@ -3051,7 +3062,7 @@ function renderSopNewDocument() {
         fileUrl = await API.uploadSopDocument(file);
         fileName = file.name;
       } else {
-        fileUrl = linkVal;
+        fileUrl = normalizeUrl(linkVal);
         fileName = null;
       }
       const forms = readFormsKvEditor("forms-editor");
