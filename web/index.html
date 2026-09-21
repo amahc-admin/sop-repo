@@ -1825,11 +1825,20 @@ function renderQueue() {
     return;
   }
 
-  const myDepts = myManagedDepartments(CURRENT_VIEWER.lastName);
+  let myDepts = myManagedDepartments(CURRENT_VIEWER.lastName);
+  // Someone at the top of the org chart (everyone eventually reports up
+  // to them) ends up "managing" every department there is -- that's not
+  // really a scope at all, so treat it the same as no match: show
+  // everything, with no "your teams" wording that would misleadingly
+  // suggest something is being left out.
+  const managesEverything = !!myDepts && myDepts.size >= DEPARTMENTS.length;
+  if (managesEverything) myDepts = null;
   const effectiveFilter = myDepts && !queueShowAll ? myDepts : null;
 
   let scopeNoteHtml = "";
-  if (myDepts) {
+  if (managesEverything) {
+    scopeNoteHtml = `<p class="muted small" style="margin-bottom:20px">Showing everything &mdash; &ldquo;${escapeHtml(CURRENT_VIEWER.lastName)}&rdquo; manages every department in the Directory.</p>`;
+  } else if (myDepts) {
     const deptNames = Array.from(myDepts).map((id) => (getDepartment(id) || {}).name || id).join(", ");
     scopeNoteHtml = effectiveFilter
       ? `<p class="muted small" style="margin-bottom:20px">Showing pending items for your teams: <strong>${escapeHtml(deptNames)}</strong> (matched to &ldquo;${escapeHtml(CURRENT_VIEWER.lastName)}&rdquo; in the Directory) &middot; <a id="queue-show-all" style="text-decoration:underline;cursor:pointer">Show everything</a></p>`
