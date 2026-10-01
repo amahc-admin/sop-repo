@@ -37,6 +37,11 @@ tradeoffs of this approach versus real per-person accounts.
 - Per-SOP **Suggestions & feedback**, plus a dedicated Suggestions review
   page for approving them (gated by the target SOP's department).
 - Update history (who approved/edited a SOP and when) on every SOP page.
+- **Commission review** (`#/commission`, `web/js/commission.js` +
+  `supabase/migrations/0018_commission_review.sql`): a weekly board for
+  discounts over 5%, freight under cost, refunds and claims. It has its
+  own per-person logins and its data is not publicly readable; see
+  SETUP.md "Commission review".
 
 ## Running locally
 
