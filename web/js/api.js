@@ -39,15 +39,9 @@ const API = (() => {
   // supabase/migrations/0007_directory_photos.sql) and returns the
   // public URL. Not passcode-gated -- see that migration's notes on why
   // that matches this app's existing security model.
-  // unguessableName: a 128-bit random name instead of timestamp + 6
-  // chars -- for buckets with no listing policy, where the URL itself is
-  // the only thing keeping a file private (commission proof).
-  async function uploadPublicFile(bucket, file, unguessableName) {
+  async function uploadPublicFile(bucket, file) {
     const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-    const rand = unguessableName
-      ? Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")
-      : Date.now() + "-" + Math.random().toString(36).slice(2, 8);
-    const path = rand + "." + ext;
+    const path = Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
     const res = await fetch(BASE + "/storage/v1/object/" + bucket + "/" + path, {
       method: "POST",
       headers: {
@@ -155,42 +149,6 @@ const API = (() => {
     },
     uploadDirectoryPhoto(file) {
       return uploadPublicFile("directory-photos", file);
-    },
-
-    // ---- Commission review (0018_commission_review.sql) ----
-    // Separate per-person logins, NOT the shared Admin/Member ones: every
-    // call re-checks that person's own passcode, and commission data is
-    // only ever readable through these RPCs (never a plain table read).
-    listCommissionPeople() { return rpc("list_commission_people", {}); },
-    commissionLogin(personId, passcode) {
-      return rpc("commission_login", { p_person_id: personId, p_passcode: passcode }).then((rows) => rows[0]);
-    },
-    commissionBoard(personId, passcode, period) {
-      return rpc("commission_board", { p_person_id: personId, p_passcode: passcode, p_period: period || null });
-    },
-    commissionAnswer(personId, passcode, flagId, reason, caseText, proof) {
-      return rpc("commission_answer", { p_person_id: personId, p_passcode: passcode, p_flag_id: flagId, p_reason: reason, p_case: caseText, p_proof: proof || [] });
-    },
-    commissionDecide(personId, passcode, flagId, decision, waived, note) {
-      return rpc("commission_decide", { p_person_id: personId, p_passcode: passcode, p_flag_id: flagId, p_decision: decision, p_waived: waived, p_note: note || null });
-    },
-    commissionAsk(personId, passcode, flagId, question) {
-      return rpc("commission_ask", { p_person_id: personId, p_passcode: passcode, p_flag_id: flagId, p_question: question });
-    },
-    commissionEscalate(personId, passcode, flagId, note) {
-      return rpc("commission_escalate", { p_person_id: personId, p_passcode: passcode, p_flag_id: flagId, p_note: note || null });
-    },
-    commissionImport(personId, passcode, rows) {
-      return rpc("commission_import", { p_person_id: personId, p_passcode: passcode, p_rows: rows });
-    },
-    commissionSignOffWeek(personId, passcode, period, week) {
-      return rpc("commission_sign_off_week", { p_person_id: personId, p_passcode: passcode, p_period: period, p_week: week });
-    },
-    commissionWeeklyPing(personId, passcode, send) {
-      return rpc("commission_post_weekly_ping", { p_person_id: personId, p_passcode: passcode, p_send: !!send });
-    },
-    uploadCommissionProof(file) {
-      return uploadPublicFile("commission-proof", file, true);
     },
   };
 })();
