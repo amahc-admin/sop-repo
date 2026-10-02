@@ -91,7 +91,7 @@
   :focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
-  .app-shell { max-width: 1360px; margin: 0 auto; padding: 20px 20px 64px; }
+  .app-shell { padding: 20px 20px 64px; }
 
   .topbar {
     display: flex; align-items: center; gap: 24px;
@@ -179,7 +179,7 @@
   /* ---- Home ---- */
   .dash-greeting { margin-bottom: 28px; }
   .dash-greeting h1 { font: 700 27px/1.15 Barlow, sans-serif; letter-spacing: -.01em; margin-bottom: 3px; }
-  .dept-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 32px; }
+  .dept-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 32px; }
   .dept-tile { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; transition: border-color .12s, transform .08s; display: block; cursor: pointer; }
   .dept-tile:hover { border-color: var(--border-strong); transform: translateY(-1px); }
   .dept-tile .count { font: 700 30px/1 "Barlow Condensed", sans-serif; color: var(--navy); font-variant-numeric: tabular-nums; }
@@ -219,7 +219,7 @@
   .view-toggle { display: flex; gap: 4px; background: var(--card-bg); border-radius: 8px; padding: 3px; }
   .view-toggle button { border: none; background: transparent; padding: 6px 14px; border-radius: 6px; font: 700 12.5px Barlow, sans-serif; color: var(--text-muted); cursor: pointer; }
   .view-toggle button.active { background: var(--surface); color: var(--navy); box-shadow: var(--shadow-card); }
-  .sop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .sop-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
   .sop-grid.view-list { grid-template-columns: 1fr; }
   .sop-card { background: var(--card-bg); border: 1px solid var(--border); border-top: 4px solid transparent; border-radius: var(--radius-md); padding: 16px; transition: transform .08s, box-shadow .12s; display: block; cursor: pointer; }
   .sop-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-card); }
